@@ -3,10 +3,9 @@ import { StructureType, UnitType } from '../game/GameConfig'
 export class HUD {
   private container: HTMLElement
   private creditsEl!: HTMLElement
+  private attCreditsEl!: HTMLElement
   private phaseEl!: HTMLElement
-  private shopEl!: HTMLElement
-  private attShopEl!: HTMLElement
-  private battleBtn!: HTMLButtonElement
+  private bottomBarEl!: HTMLElement
   private messageEl!: HTMLElement
   private loadingEl!: HTMLElement
 
@@ -24,31 +23,33 @@ export class HUD {
       <div id="loading-screen">LOADING ASSETS...</div>
       <div id="phase-display" class="hidden">BUILD PHASE</div>
       <div id="credits-display" class="hidden">Credits: <span id="credits-val">200</span></div>
-      <div id="shop" class="hidden">
-        <span class="shop-label">DEFENDER:</span>
-        <button class="shop-btn" data-type="turret">Turret 30cr</button>
-        <button class="shop-btn" data-type="cannon">Cannon 60cr</button>
-        <button class="shop-btn" data-type="wall">Wall 20cr</button>
-        <button class="shop-btn" data-type="mine">Mine 20cr</button>
+      <div id="att-credits-display" class="hidden">Credits: <span id="att-credits-val">200</span></div>
+      <div id="bottom-bar" class="hidden">
+        <div id="shop" class="shop-panel">
+          <span class="panel-label">DEFENDER</span>
+          <button class="shop-btn" data-type="turret">Turret 30cr</button>
+          <button class="shop-btn" data-type="cannon">Cannon 60cr</button>
+          <button class="shop-btn" data-type="wall">Wall 20cr</button>
+          <button class="shop-btn" data-type="mine">Mine 20cr</button>
+        </div>
+        <button id="battle-btn">&#9876; BATTLE</button>
+        <div id="attacker-shop" class="shop-panel att-panel">
+          <span class="panel-label">ATTACKER</span>
+          <button class="att-btn" data-type="scout">Scout 20cr</button>
+          <button class="att-btn" data-type="tank">Tank 50cr</button>
+          <button class="att-btn" data-type="bomber">Bomber 60cr</button>
+          <button class="att-btn" data-type="drone">Drone 30cr</button>
+        </div>
       </div>
-      <div id="attacker-shop" class="hidden">
-        <span class="att-label">TEST — SPAWN ATTACKER:</span>
-        <button class="att-btn" data-type="scout">Scout</button>
-        <button class="att-btn" data-type="tank">Tank</button>
-        <button class="att-btn" data-type="bomber">Bomber</button>
-        <button class="att-btn" data-type="drone">Drone</button>
-      </div>
-      <button id="battle-btn" class="hidden">&#9876; BATTLE</button>
       <div id="game-message" class="hidden"></div>
     `
 
-    this.loadingEl  = this.container.querySelector('#loading-screen')!
-    this.phaseEl    = this.container.querySelector('#phase-display')!
-    this.creditsEl  = this.container.querySelector('#credits-val')!
-    this.shopEl     = this.container.querySelector('#shop')!
-    this.attShopEl  = this.container.querySelector('#attacker-shop')!
-    this.battleBtn  = this.container.querySelector('#battle-btn')!
-    this.messageEl  = this.container.querySelector('#game-message')!
+    this.loadingEl     = this.container.querySelector('#loading-screen')!
+    this.phaseEl       = this.container.querySelector('#phase-display')!
+    this.creditsEl     = this.container.querySelector('#credits-val')!
+    this.attCreditsEl  = this.container.querySelector('#att-credits-val')!
+    this.bottomBarEl   = this.container.querySelector('#bottom-bar')!
+    this.messageEl     = this.container.querySelector('#game-message')!
 
     this.container.querySelectorAll('.shop-btn').forEach(btn => {
       btn.addEventListener('click', e => {
@@ -66,7 +67,7 @@ export class HUD {
       })
     })
 
-    this.battleBtn.addEventListener('click', () => this.onBattle?.())
+    this.container.querySelector('#battle-btn')!.addEventListener('click', () => this.onBattle?.())
   }
 
   showGame() {
@@ -79,20 +80,22 @@ export class HUD {
     this.creditsEl.textContent = String(amount)
   }
 
+  setAttCredits(amount: number) {
+    this.attCreditsEl.textContent = String(amount)
+  }
+
   setPhase(phase: 'build' | 'battle' | 'win' | 'lose') {
     switch (phase) {
       case 'build':
         this.phaseEl.textContent = 'BUILD PHASE'
-        this.shopEl.classList.remove('hidden')
-        this.attShopEl.classList.remove('hidden')
-        this.battleBtn.classList.remove('hidden')
+        this.bottomBarEl.classList.remove('hidden')
+        this.container.querySelector('#att-credits-display')!.classList.remove('hidden')
         this.messageEl.classList.add('hidden')
         break
       case 'battle':
         this.phaseEl.textContent = 'BATTLE PHASE'
-        this.shopEl.classList.add('hidden')
-        this.attShopEl.classList.add('hidden')
-        this.battleBtn.classList.add('hidden')
+        this.bottomBarEl.classList.add('hidden')
+        this.container.querySelector('#att-credits-display')!.classList.add('hidden')
         break
       case 'win':
         this.phaseEl.textContent = 'BATTLE PHASE'

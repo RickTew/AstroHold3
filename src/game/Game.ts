@@ -25,6 +25,8 @@ export class Game {
   private battlePhase: BattlePhase | null = null
   private testUnits: Unit[] = []
 
+  private attCredits = Config.START_CREDITS
+
   // Camera pan state
   private isPanning = false
   private lastPan = { x: 0, y: 0 }
@@ -69,7 +71,9 @@ export class Game {
   private enterBuildPhase() {
     this.phase = 'build'
     this.testUnits = []
+    this.attCredits = Config.START_CREDITS
     this.hud.setPhase('build')
+    this.hud.setAttCredits(this.attCredits)
     this.buildPhase = new BuildPhase(this.scene, this.camera, this.hud, Config.START_CREDITS)
 
     // Auto-spawn one cyborg so it's visible immediately for model testing
@@ -79,6 +83,10 @@ export class Game {
 
     this.hud.onBattle = () => this.enterBattlePhase()
     this.hud.onSpawnUnit = (type) => {
+      const cost = Config.UNITS[type].cost
+      if (this.attCredits < cost) return
+      this.attCredits -= cost
+      this.hud.setAttCredits(this.attCredits)
       const unit = new Unit(this.scene, type, 350 + Math.random() * 150)
       this.testUnits.push(unit)
     }
@@ -114,6 +122,7 @@ export class Game {
     const delta = Math.min((now - this.lastTime) / 1000, 0.1)
     this.lastTime = now
 
+    this.testUnits.forEach(u => u.update(delta))
     this.powerCore?.update(delta)
     this.battlePhase?.update(delta)
 

@@ -8,7 +8,7 @@ import { Config, UnitType } from '../game/GameConfig'
 const MODEL_SCALE = 25
 const MODEL_TILT_X = 0
 
-type AnimName = 'running' | 'dead'
+type AnimName = 'idle' | 'running' | 'dead'
 type LoadedGLTF = { scene: THREE.Group; animations: THREE.AnimationClip[] }
 
 const cache: Partial<Record<AnimName, LoadedGLTF>> = {}
@@ -28,7 +28,7 @@ export class Unit {
   private isDisposed = false
 
   static async preload(): Promise<void> {
-    const anims: AnimName[] = ['running', 'dead']
+    const anims: AnimName[] = ['idle', 'running', 'dead']
     await Promise.all(anims.map(name =>
       new Promise<void>(resolve => {
         loader.load(
@@ -49,7 +49,7 @@ export class Unit {
     const spread = Config.WORLD.TOP - Config.WORLD.BOTTOM - 40
     this.mesh.position.set(spawnX, (Math.random() - 0.5) * spread, 0)
 
-    this.swapAnim('running')
+    this.swapAnim('idle')
     this.hpBar = this.buildHpBar()
     scene.add(this.mesh)
   }
