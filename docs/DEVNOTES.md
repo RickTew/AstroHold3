@@ -194,6 +194,35 @@ Current code resets index when `unitIdx >= alive.length`, which prevents infinit
 ## Decisions Made & Why
 - **No React / R3F** — vanilla Three.js keeps the build lean; R3F ecosystem is strong but adds React overhead for a non-UI-heavy game
 - **Geometric placeholders** — structures use Three.js primitives so gameplay works before art is final
-- **Sphere GLB deferred** — 57MB is too large for dev; use `SphereGeometry` until the file is compressed
+- **Sphere GLB on Vercel** — 57MB file IS tracked in git and deployed; SphereGeometry fallback only if file fails to load
 - **Turn-based not real-time** — easier to balance and debug; speed controlled by `TURN_INTERVAL` in `BattlePhase.ts`
 - **DOM overlay for HUD** — HTML/CSS is faster to iterate than Three.js UI; `pointer-events: none` on container with `auto` on children
+- **Bottom bar flex layout** — single `#bottom-bar` div holds both shops + battle button; prevents any overlap at any window size
+
+---
+
+## Current Build State (2026-05-06, session 2)
+- Deployed at https://astrohold3.vercel.app / GitHub: RickTew/AstroHold3
+- World: ±600 x ±200, three ~400×400 zones, rocky planet terrain (canvas texture)
+
+### Key tuning knobs (check these first after any crash)
+- `MODEL_SCALE = 25` in `Unit.ts` — cyborg 1.65 units → ~41 world units tall
+- `MODEL_TILT_X = 0` in `Unit.ts` — faces camera; if model appears face-down, try `Math.PI / 2`
+- Sphere auto-scales in `PowerCore.ts` from bounding box; stored as `glbBaseScale` for pulse
+
+### Animation gotcha — T-pose during build phase (FIXED)
+`testUnits` are visible during the build phase but `battlePhase` is null, so `update()` was never called.
+Fix: `this.testUnits.forEach(u => u.update(delta))` in Game.ts loop.
+Symptom if this regresses: model appears frozen in T-pose (arms spread, no motion).
+
+### What's working now
+- Cyborg: idle.glb default, running.glb + dead.glb preloaded, hit flash
+- Power Core: sphere.glb on Vercel, auto-scales, pulses using stored base scale
+- Bottom bar: flex — defender left, battle center, attacker right — never overlaps
+- Credits: defender top-left (blue), attacker top-right (red), both deduct on spend
+
+### What to test / next up
+1. Confirm idle animation plays (not T-pose)
+2. Spawn attacker units, watch credits deduct
+3. Place structures, hit BATTLE — check running/dead animations
+4. Confirm sphere.glb loads and pulses (may take a moment — 57MB)
