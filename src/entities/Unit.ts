@@ -43,7 +43,15 @@ export class Unit {
       new Promise<void>(resolve => {
         loader.load(
           `/models/cyborg/${name}.glb`,
-          gltf => { cache[name] = gltf as unknown as LoadedGLTF; resolve() },
+          gltf => {
+            // Meshy bakes scale into animation tracks — strip them so our
+            // clone.scale.setScalar(MODEL_SCALE) is the sole scale authority
+            gltf.animations.forEach(clip => {
+              clip.tracks = clip.tracks.filter(t => !t.name.endsWith('.scale'))
+            })
+            cache[name] = gltf as unknown as LoadedGLTF
+            resolve()
+          },
           undefined,
           () => { console.warn(`cyborg/${name}.glb not found — using fallback`); resolve() }
         )
@@ -107,6 +115,7 @@ export class Unit {
 
   get speed()    { return Config.UNITS[this.type].speed }
   get damage()   { return Config.UNITS[this.type].damage }
+  get range()    { return Config.UNITS[this.type].range }
   get isScout()  { return this.type === 'scout' }
   get isBomber() { return this.type === 'bomber' }
 

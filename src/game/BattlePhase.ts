@@ -84,7 +84,7 @@ export class BattlePhase {
   private doUnitTurn(unit: Unit) {
     if (unit.isDead) return
 
-    // Mine check before moving
+    // Mine check before anything
     this.checkMines(unit)
     if (unit.isDead) return
 
@@ -101,7 +101,44 @@ export class BattlePhase {
       }
     }
 
-    // Move toward power core
+    // Engage nearest structure within attack range (fight mode)
+    let nearestStruct: typeof this.structures[0] | null = null
+    let nearestStructDist: number = unit.range
+    for (const s of this.structures) {
+      if (s.isDead || s.type === 'wall') continue   // can't shoot through walls
+      const dx = s.worldX - unit.worldX
+      const dy = s.worldY - unit.worldY
+      const d = Math.sqrt(dx * dx + dy * dy)
+      if (d < nearestStructDist) { nearestStructDist = d; nearestStruct = s }
+    }
+    if (nearestStruct) {
+      // Fire cyan projectile toward structure (damage applied immediately)
+      this.projectiles.push(new Projectile(
+        this.scene,
+        unit.worldX, unit.worldY,
+        null,
+        nearestStruct.worldX, nearestStruct.worldY,
+        unit.damage,
+        unit.isBomber,
+        unit.isBomber ? Config.UNITS.bomber.aoeRadius : 0,
+        0x00ccff   // cyan = unit shots
+      ))
+      nearestStruct.takeDamage(unit.damage)
+      if (unit.isBomber && !nearestStruct.isDead) {
+        const aoe = Config.UNITS.bomber.aoeRadius
+        this.explosions.push(new Explosion(this.scene, nearestStruct.worldX, nearestStruct.worldY, aoe, 0.6))
+        for (const s of this.structures) {
+          if (!s.isDead) {
+            const sdx = s.worldX - nearestStruct.worldX
+            const sdy = s.worldY - nearestStruct.worldY
+            if (Math.sqrt(sdx * sdx + sdy * sdy) < aoe) s.takeDamage(unit.damage * 0.5)
+          }
+        }
+      }
+      return   // attacked this turn — don't also move
+    }
+
+    // No structure in range — move toward power core
     const tx = this.core.mesh.position.x
     const ty = this.core.mesh.position.y
     const dx = tx - unit.worldX
@@ -114,7 +151,6 @@ export class BattlePhase {
         const aoe = Config.UNITS.bomber.aoeRadius
         this.core.takeDamage(unit.damage)
         this.explosions.push(new Explosion(this.scene, unit.worldX, unit.worldY, aoe, 0.8))
-        // AoE damages nearby structures too
         for (const s of this.structures) {
           if (!s.isDead) {
             const sdx = s.worldX - unit.worldX
@@ -130,7 +166,6 @@ export class BattlePhase {
       const nx = unit.worldX + (dx / dist) * unit.speed
       const ny = unit.worldY + (dy / dist) * unit.speed
       unit.moveTo(nx, ny)
-      // Re-check mines after moving
       this.checkMines(unit)
     }
   }

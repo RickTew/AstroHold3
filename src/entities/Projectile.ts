@@ -18,13 +18,14 @@ export class Projectile {
     fixedTargetY: number,
     readonly damage: number,
     readonly isAoe: boolean = false,
-    readonly aoeRadius: number = 0
+    readonly aoeRadius: number = 0,
+    baseColor: number = 0xffee00   // yellow = structure shots; cyan = unit shots
   ) {
     this.targetX = fixedTargetX
     this.targetY = fixedTargetY
 
     const geo = new THREE.SphereGeometry(isAoe ? 6 : 4, 6, 6)
-    const mat = new THREE.MeshBasicMaterial({ color: isAoe ? 0xff4400 : 0xffee00 })
+    const mat = new THREE.MeshBasicMaterial({ color: isAoe ? 0xff4400 : baseColor })
     this.mesh = new THREE.Mesh(geo, mat)
     this.mesh.position.set(startX, startY, 1)
     scene.add(this.mesh)
