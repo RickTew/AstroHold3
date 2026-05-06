@@ -1,0 +1,71 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2869
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fnil\fcharset0 HelveticaNeue-Bold;\f1\fnil\fcharset0 HelveticaNeue;\f2\fnil\fcharset0 HelveticaNeue-Italic;
+\f3\fnil\fcharset0 Menlo-Regular;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+{\*\listtable{\list\listtemplateid1\listhybrid{\listlevel\levelnfc23\levelnfcn23\leveljc0\leveljcn0\levelfollow0\levelstartat1\levelspace360\levelindent0{\*\levelmarker \{disc\}}{\leveltext\leveltemplateid1\'01\uc0\u8226 ;}{\levelnumbers;}\fi-360\li720\lin720 }{\listname ;}\listid1}}
+{\*\listoverridetable{\listoverride\listid1\listoverridecount0\ls1}}
+\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\deftab560
+\pard\pardeftab560\partightenfactor0
+
+\f0\b\fs40 \cf0 How to use this \
+\pard\pardeftab560\slleading20\pardirnatural\partightenfactor0
+
+\f1\b0\fs26 \cf0 To ensure your setup is bulletproof, use these 
+\f0\b "Instructional Anchors"
+\f1\b0 :\uc0\u8232 \
+\pard\pardeftab560\sa40\pardirnatural\partightenfactor0
+
+\f0\b\fs32 \cf0 1. Handling the Build "Clipping" Problem\uc0\u8232 \
+\pard\pardeftab560\slleading20\pardirnatural\partightenfactor0
+
+\f1\b0\fs26 \cf0 If you are building a game with large indoor/outdoor transitions:\uc0\u8232 \
+Implement 
+\f0\b Logarithmic Depth Buffer
+\f1\b0  in the renderer settings. This prevents textures from flickering (Z-fighting) when we have buildings far away and small details close up.\uc0\u8232 \
+\pard\pardeftab560\sa40\partightenfactor0
+
+\f0\b\fs32 \cf0 2. The Raycaster Connection\
+\pard\pardeftab560\slleading20\pardirnatural\partightenfactor0
+
+\f1\b0\fs26 \cf0 Since your camera moves, your mouse clicks (for building/selecting) need to be accurate. \uc0\u8232 \
+Always bind the Raycaster to 
+\fs24 CameraManager.getInstance().camera
+\fs26 . If the camera is lerping, ensure the Raycaster is updated 
+\f2\i after
+\f1\i0  the camera has moved for the current frame.\uc0\u8232 \
+\pard\pardeftab560\sa40\partightenfactor0
+
+\f0\b\fs32 \cf0 3. Vite HMR Cleanup\
+\pard\pardeftab560\slleading20\pardirnatural\partightenfactor0
+
+\f1\b0\fs26 \cf0 Vite will try to reload your code when you save. To prevent "Duplicate Event Listeners," so:\uc0\u8232 \
+"Ensure all 
+\fs24 window.addEventListener
+\fs26  calls in the CameraManager are paired with a cleanup function or check if the listener already exists to avoid memory leaks during Vite HMR."\
+\pard\pardeftab560\slleading20\partightenfactor0
+\cf0 \
+\pard\pardeftab560\pardirnatural\partightenfactor0
+
+\fs40 \cf0 \uc0\u55357 \u56481 
+\f0\b  Pro-Tip for "Building" Games\uc0\u8232 \
+\pard\pardeftab560\slleading20\pardirnatural\partightenfactor0
+
+\f1\b0\fs26 \cf0 If your game involves placing objects (like a city builder):\uc0\u8232 \
+\pard\pardeftab560\pardirnatural\partightenfactor0
+\ls1\ilvl0
+\f3\fs18 \cf0 {\listtext	\uc0\u8226 	}
+\f0\b\fs26 Skill to ask for:
+\f1\b0  "Grid Snapping Logic."\
+\ls1\ilvl0
+\f3\fs18 {\listtext	\uc0\u8226 	}
+\f0\b\fs26 The Logic:
+\f1\b0  const snappedX = Math.round(rawX / gridSize) * gridSize;\
+\ls1\ilvl0
+\f3\fs18 {\listtext	\uc0\u8226 	}
+\f0\b\fs26 The Camera Trap:
+\f1\b0  When building, players hate "Perspective Distortion." 
+\f0\b lower the FOV to 45
+\f1\b0  when the user enters "Build Mode" to make the world look flatter and easier to align.\
+}

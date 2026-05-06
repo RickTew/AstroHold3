@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AstroHold</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+
+    #hud {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+      font-family: 'Courier New', monospace;
+      color: #cce8ff;
+    }
+    #hud * { pointer-events: auto; }
+
+    #phase-display {
+      position: absolute;
+      top: 18px; left: 50%;
+      transform: translateX(-50%);
+      font-size: 22px;
+      letter-spacing: 4px;
+      color: #66ccff;
+      text-shadow: 0 0 12px #0088ff;
+    }
+
+    #credits-display {
+      position: absolute;
+      top: 18px; left: 20px;
+      font-size: 16px;
+      color: #aaddff;
+    }
+
+    #shop {
+      position: absolute;
+      bottom: 20px; left: 20px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .shop-btn {
+      background: #0a1e33;
+      border: 1px solid #1a4466;
+      color: #88bbdd;
+      padding: 8px 14px;
+      cursor: pointer;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      transition: background 0.1s, border-color 0.1s;
+    }
+    .shop-btn:hover { background: #102840; border-color: #2266aa; }
+    .shop-btn.selected {
+      background: #0e3055;
+      border-color: #00aaff;
+      color: #00eeff;
+      text-shadow: 0 0 6px #00aaff;
+    }
+
+    #battle-btn {
+      position: absolute;
+      bottom: 20px; right: 20px;
+      background: #2a0000;
+      border: 2px solid #aa2200;
+      color: #ff8866;
+      padding: 10px 24px;
+      font-size: 17px;
+      cursor: pointer;
+      font-family: 'Courier New', monospace;
+      letter-spacing: 2px;
+      transition: background 0.1s, border-color 0.1s;
+    }
+    #battle-btn:hover {
+      background: #440000;
+      border-color: #ff4400;
+      color: #ffaa88;
+    }
+
+    #game-message {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 52px;
+      letter-spacing: 6px;
+      text-shadow: 0 0 24px currentColor;
+      pointer-events: none;
+      text-align: center;
+    }
+    #game-message small {
+      display: block;
+      font-size: 16px;
+      letter-spacing: 2px;
+      margin-top: 12px;
+      opacity: 0.7;
+    }
+
+    #loading-screen {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 20px;
+      letter-spacing: 3px;
+      color: #4488aa;
+    }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div id="hud"></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
