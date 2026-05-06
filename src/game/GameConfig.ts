@@ -1,5 +1,5 @@
 export const Config = {
-  WORLD: { LEFT: -600, RIGHT: 600, TOP: 350, BOTTOM: -350 },
+  WORLD: { LEFT: -600, RIGHT: 600, TOP: 200, BOTTOM: -200 },
   DEFENDER_MAX_X: -200,
   ATTACKER_MIN_X: 200,
   GRID_CELL: 50,

@@ -1,5 +1,9 @@
 import * as THREE from 'three'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { Config } from '../game/GameConfig'
+
+// Adjust scale when sphere.glb is loaded — Meshy models vary in size
+const SPHERE_SCALE = 0.06
 
 export class PowerCore {
   readonly mesh: THREE.Group
@@ -7,6 +11,7 @@ export class PowerCore {
   readonly maxHp: number
   private hpBar: THREE.Mesh
   private coreMesh: THREE.Mesh
+  private glbModel: THREE.Group | null = null
   private pulseTime = 0
 
   constructor(scene: THREE.Scene) {
@@ -19,7 +24,7 @@ export class PowerCore {
     const ringMat = new THREE.MeshBasicMaterial({ color: 0x004466, transparent: true, opacity: 0.6 })
     this.mesh.add(new THREE.Mesh(ringGeo, ringMat))
 
-    // Core sphere
+    // Fallback sphere (shown until sphere.glb loads or on Vercel)
     const geo = new THREE.SphereGeometry(Config.POWER_CORE.RADIUS, 16, 16)
     const mat = new THREE.MeshBasicMaterial({ color: 0x00ffee })
     this.coreMesh = new THREE.Mesh(geo, mat)
@@ -42,6 +47,21 @@ export class PowerCore {
     this.mesh.add(this.hpBar)
 
     scene.add(this.mesh)
+
+    // Load sphere.glb — only present locally, falls back silently on Vercel
+    const sLoader = new GLTFLoader()
+    sLoader.load(
+      '/models/sphere.glb',
+      (gltf) => {
+        this.coreMesh.visible = false
+        this.glbModel = gltf.scene
+        this.glbModel.scale.setScalar(SPHERE_SCALE)
+        this.mesh.add(this.glbModel)
+        console.log('sphere.glb loaded — SPHERE_SCALE:', SPHERE_SCALE)
+      },
+      undefined,
+      () => { /* expected on Vercel — SphereGeometry fallback active */ }
+    )
   }
 
   takeDamage(amount: number) {
@@ -51,10 +71,24 @@ export class PowerCore {
     this.hpBar.position.x = -(1 - ratio) * 35
     const mat = this.hpBar.material as THREE.MeshBasicMaterial
     mat.color.setHex(ratio > 0.5 ? 0x00ff88 : ratio > 0.25 ? 0xffaa00 : 0xff2200)
-    // Flash core red on hit
-    const coreMat = this.coreMesh.material as THREE.MeshBasicMaterial
-    coreMat.color.setHex(0xff4400)
-    setTimeout(() => coreMat.color.setHex(0x00ffee), 200)
+    this.flashCore()
+  }
+
+  private flashCore() {
+    if (this.glbModel) {
+      this.glbModel.traverse(obj => {
+        if (obj instanceof THREE.Mesh) {
+          const mat = obj.material as THREE.MeshStandardMaterial
+          const origHex = mat.color.getHex()
+          mat.color.setHex(0xff4400)
+          setTimeout(() => mat.color.setHex(origHex), 200)
+        }
+      })
+    } else {
+      const coreMat = this.coreMesh.material as THREE.MeshBasicMaterial
+      coreMat.color.setHex(0xff4400)
+      setTimeout(() => coreMat.color.setHex(0x00ffee), 200)
+    }
   }
 
   get isDead() { return this.hp <= 0 }
@@ -62,6 +96,10 @@ export class PowerCore {
   update(delta: number) {
     this.pulseTime += delta * 2.5
     const s = 1 + Math.sin(this.pulseTime) * 0.08
-    this.coreMesh.scale.setScalar(s)
+    if (this.glbModel) {
+      this.glbModel.scale.setScalar(SPHERE_SCALE * s)
+    } else {
+      this.coreMesh.scale.setScalar(s)
+    }
   }
 }

@@ -3,8 +3,8 @@ import { Config, StructureType } from './GameConfig'
 import { Structure } from '../entities/Structure'
 import { HUD } from '../ui/HUD'
 
-const COLS = 8   // defender zone: -600 to -200 = 400px / 50 = 8 cols
-const ROWS = 14  // -350 to 350 = 700px / 50 = 14 rows
+const COLS = 8
+const ROWS = 8  // 400 / 50 = 8 (world height changed from 700 to 400)
 
 export class BuildPhase {
   private structures: Structure[] = []
@@ -29,9 +29,8 @@ export class BuildPhase {
     this.gridGroup = new THREE.Group()
     scene.add(this.gridGroup)
 
-    // Mark power core cell as blocked (col 1, row 7 = center-ish)
-    const pcCol = Math.floor((Config.POWER_CORE.X - (-600)) / Config.GRID_CELL)
-    const pcRow = Math.floor((Config.POWER_CORE.Y - (-350)) / Config.GRID_CELL)
+    const pcCol = Math.floor((Config.POWER_CORE.X - Config.WORLD.LEFT) / Config.GRID_CELL)
+    const pcRow = Math.floor((Config.POWER_CORE.Y - Config.WORLD.BOTTOM) / Config.GRID_CELL)
     this.occupied.add(`${pcCol},${pcRow}`)
 
     this.hitPlane = this.buildHitPlane()
@@ -45,21 +44,29 @@ export class BuildPhase {
   }
 
   private buildGrid() {
-    const mat = new THREE.LineBasicMaterial({ color: 0x1a3a55, transparent: true, opacity: 0.6 })
+    const mat = new THREE.LineBasicMaterial({ color: 0x1a3a55, transparent: true, opacity: 0.6 } as THREE.LineBasicMaterialParameters)
     for (let c = 0; c <= COLS; c++) {
-      const x = -600 + c * Config.GRID_CELL
-      const pts = [new THREE.Vector3(x, -350, 0.3), new THREE.Vector3(x, 350, 0.3)]
+      const x = Config.WORLD.LEFT + c * Config.GRID_CELL
+      const pts = [
+        new THREE.Vector3(x, Config.WORLD.BOTTOM, 0.3),
+        new THREE.Vector3(x, Config.WORLD.TOP, 0.3),
+      ]
       this.gridGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat))
     }
     for (let r = 0; r <= ROWS; r++) {
-      const y = -350 + r * Config.GRID_CELL
-      const pts = [new THREE.Vector3(-600, y, 0.3), new THREE.Vector3(-200, y, 0.3)]
+      const y = Config.WORLD.BOTTOM + r * Config.GRID_CELL
+      const pts = [
+        new THREE.Vector3(Config.WORLD.LEFT, y, 0.3),
+        new THREE.Vector3(Config.DEFENDER_MAX_X, y, 0.3),
+      ]
       this.gridGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat))
     }
   }
 
   private buildHitPlane(): THREE.Mesh {
-    const geo = new THREE.PlaneGeometry(400, 700)
+    const W = Config.DEFENDER_MAX_X - Config.WORLD.LEFT   // 400
+    const H = Config.WORLD.TOP - Config.WORLD.BOTTOM       // 400
+    const geo = new THREE.PlaneGeometry(W, H)
     const mat = new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide })
     const plane = new THREE.Mesh(geo, mat)
     plane.position.set(-400, 0, 0.2)
@@ -76,12 +83,12 @@ export class BuildPhase {
     if (!hits.length) return null
 
     const p = hits[0].point
-    const col = Math.floor((p.x - (-600)) / Config.GRID_CELL)
-    const row = Math.floor((p.y - (-350)) / Config.GRID_CELL)
+    const col = Math.floor((p.x - Config.WORLD.LEFT)   / Config.GRID_CELL)
+    const row = Math.floor((p.y - Config.WORLD.BOTTOM) / Config.GRID_CELL)
     if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return null
 
-    const wx = -600 + col * Config.GRID_CELL + Config.GRID_CELL / 2
-    const wy = -350 + row * Config.GRID_CELL + Config.GRID_CELL / 2
+    const wx = Config.WORLD.LEFT   + col * Config.GRID_CELL + Config.GRID_CELL / 2
+    const wy = Config.WORLD.BOTTOM + row * Config.GRID_CELL + Config.GRID_CELL / 2
     return { col, row, wx, wy }
   }
 

@@ -123,8 +123,7 @@ export class BattlePhase {
             if (Math.sqrt(sdx * sdx + sdy * sdy) < aoe) s.takeDamage(unit.damage * 0.4)
           }
         }
-        unit.isDead = true
-        unit.mesh.removeFromParent()
+        unit.kill()
       } else {
         this.core.takeDamage(unit.damage)
       }

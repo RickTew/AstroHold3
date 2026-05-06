@@ -23,12 +23,17 @@ export class Game {
   private hud!: HUD
   private buildPhase: BuildPhase | null = null
   private battlePhase: BattlePhase | null = null
+  private testUnits: Unit[] = []
+
+  // Camera pan state
+  private isPanning = false
+  private lastPan = { x: 0, y: 0 }
 
   constructor(private canvas: HTMLCanvasElement) {
     this.scene = new THREE.Scene()
-    this.scene.background = new THREE.Color(0x020a10)
+    this.scene.background = new THREE.Color(0x0d0b08)
 
-    this.camera = new THREE.OrthographicCamera(-600, 600, 350, -350, 0.1, 1000)
+    this.camera = new THREE.OrthographicCamera(-600, 600, 200, -200, 0.1, 1000)
     this.camera.position.set(0, 0, 100)
     this.camera.lookAt(0, 0, 0)
 
@@ -36,13 +41,17 @@ export class Game {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this.renderer.setSize(window.innerWidth, window.innerHeight)
 
-    // Lighting — needed for MeshStandardMaterial in GLB models
     this.scene.add(new THREE.AmbientLight(0xffffff, 2.5))
     const dir = new THREE.DirectionalLight(0xffffff, 1.2)
     dir.position.set(0, 0, 100)
     this.scene.add(dir)
 
     window.addEventListener('resize', this.onResize)
+    window.addEventListener('wheel', this.onWheel, { passive: false })
+    window.addEventListener('mousedown', this.onMouseDown)
+    window.addEventListener('mousemove', this.onMouseMove)
+    window.addEventListener('mouseup', this.onMouseUp)
+    window.addEventListener('contextmenu', this.onContextMenu)
   }
 
   async init() {
@@ -58,9 +67,14 @@ export class Game {
 
   private enterBuildPhase() {
     this.phase = 'build'
+    this.testUnits = []
     this.hud.setPhase('build')
     this.buildPhase = new BuildPhase(this.scene, this.camera, this.hud, Config.START_CREDITS)
     this.hud.onBattle = () => this.enterBattlePhase()
+    this.hud.onSpawnUnit = (type) => {
+      const unit = new Unit(this.scene, type, 350 + Math.random() * 150)
+      this.testUnits.push(unit)
+    }
   }
 
   private enterBattlePhase() {
@@ -69,8 +83,10 @@ export class Game {
     this.buildPhase.cleanup()
     this.buildPhase = null
 
-    const unitTypes = AIPlayer.buildArmy(Config.START_CREDITS)
-    const units = unitTypes.map(t => new Unit(this.scene, t, 420 + Math.random() * 100))
+    const units = this.testUnits.length > 0
+      ? this.testUnits
+      : AIPlayer.buildArmy(Config.START_CREDITS).map(t => new Unit(this.scene, t, 420 + Math.random() * 100))
+    this.testUnits = []
 
     this.phase = 'battle'
     this.hud.setPhase('battle')
@@ -98,12 +114,55 @@ export class Game {
   }
 
   private onResize = () => {
-    this.renderer.setSize(window.innerWidth, window.innerHeight)
+    const { innerWidth: w, innerHeight: h } = window
+    if (w === 0 || h === 0) return
+    this.renderer.setSize(w, h)
   }
+
+  private onWheel = (e: WheelEvent) => {
+    e.preventDefault()
+    const factor = e.deltaY > 0 ? 1.15 : 0.87
+    const newWidth = (this.camera.right - this.camera.left) * factor
+    if (newWidth > 2800 || newWidth < 200) return
+    this.camera.left   *= factor
+    this.camera.right  *= factor
+    this.camera.top    *= factor
+    this.camera.bottom *= factor
+    this.camera.updateProjectionMatrix()
+  }
+
+  private onMouseDown = (e: MouseEvent) => {
+    if (e.button === 1 || e.button === 2) {
+      this.isPanning = true
+      this.lastPan = { x: e.clientX, y: e.clientY }
+    }
+  }
+
+  private onMouseMove = (e: MouseEvent) => {
+    if (!this.isPanning) return
+    const dx = e.clientX - this.lastPan.x
+    const dy = e.clientY - this.lastPan.y
+    const ww = this.camera.right - this.camera.left
+    const wh = this.camera.top - this.camera.bottom
+    this.camera.position.x -= (dx / window.innerWidth) * ww
+    this.camera.position.y += (dy / window.innerHeight) * wh
+    this.lastPan = { x: e.clientX, y: e.clientY }
+  }
+
+  private onMouseUp = (e: MouseEvent) => {
+    if (e.button === 1 || e.button === 2) this.isPanning = false
+  }
+
+  private onContextMenu = (e: Event) => e.preventDefault()
 
   dispose() {
     cancelAnimationFrame(this.rafId)
     window.removeEventListener('resize', this.onResize)
+    window.removeEventListener('wheel', this.onWheel)
+    window.removeEventListener('mousedown', this.onMouseDown)
+    window.removeEventListener('mousemove', this.onMouseMove)
+    window.removeEventListener('mouseup', this.onMouseUp)
+    window.removeEventListener('contextmenu', this.onContextMenu)
     this.buildPhase?.cleanup()
     this.renderer.dispose()
     this.scene.clear()
