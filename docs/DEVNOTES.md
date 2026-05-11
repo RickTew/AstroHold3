@@ -226,3 +226,23 @@ Symptom if this regresses: model appears frozen in T-pose (arms spread, no motio
 2. Spawn attacker units, watch credits deduct
 3. Place structures, hit BATTLE — check running/dead animations
 4. Confirm sphere.glb loads and pulses (may take a moment — 57MB)
+
+---
+
+## Session 3 (2026-05-12) — Sphere placement bug + canonical placement flow
+
+### Bug fixed: ghost shown but `sphereSelecting` stuck false
+`onBuySphere` was setting `this.sphereSelecting = true` *before* calling `this.createSphereGhost()`. But `createSphereGhost` calls `this.clearSphereGhost()` defensively to wipe any stale mesh — and `clearSphereGhost` ALSO sets `sphereSelecting = false`. Net: the ghost appeared on screen, but the flag was already back to false, so every canvas click silently failed the `sphereSelecting && buildPhase` gate.
+
+**Fix:** swap the order in `onBuySphere` — call `createSphereGhost()` first, then set `sphereSelecting = true`. Order matters because the helper resets the flag.
+
+**Diagnosis tool:** an on-screen debug overlay (top-center) that prints mousedown state was added temporarily — it surfaced the impossible-looking `ssel=N, ghost.v=Y` combination immediately. Pattern worth reusing: when a placement / state-flag bug is invisible to inspection, route state into the HUD via `setDebug(msg)` and screenshot it. Removed after the fix.
+
+### Pattern: helper-resets-state class of bug
+Any "clear/reset" helper that also resets a coordination flag will silently undo flag changes made by its callers if called from within a `create` helper. **Watch for this any time a `createX` calls `clearX` internally** — `attGhost` happens to dodge this by not calling `clearAttPlacement` from `createAttGhost` (it only removes the mesh).
+
+### Canonical placement flow (now in CLAUDE.md)
+Cyborg and sphere now share the same 3-step pattern. The ghost mesh is the source of truth for placement position — never re-raycast at click time. See CLAUDE.md "Canonical placement flow" section.
+
+### Visual upgrade
+Defender zone gets a bright cyan tint (`0x00ddff @ 0.32` opacity) over (-600..-200, -200..200) when sphere selection mode is active — was previously invisible, so users couldn't tell where to click.
