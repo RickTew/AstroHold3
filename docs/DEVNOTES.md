@@ -273,3 +273,40 @@ Per CLAUDE.md, swapped fallback `MeshStandardMaterial` → `MeshBasicMaterial` s
 - `attPendingCost` — declared and read in `clearAttPlacement` but never assigned anywhere → useless "refund" code path
 - `testUnits` → renamed to `attackerUnits` (they're real attacker units, not test fixtures)
 - Removed `markSpherePurchased` is still called (single-shot sphere) but flag-spaghetti gates are gone
+
+---
+
+## Session 5 (2026-05-12) — Multi-sphere refactor BROKE sphere visuals; LIVE SITE IS BROKEN
+
+### TL;DR for the next session
+- **Live site (https://astrohold3.vercel.app) is currently broken.** Placed spheres render as oblate / squashed ellipsoids instead of round.
+- Most likely cause: `loadSphereTemplate()` in `Game.ts` stores `gltf.scene` as a template, and `SphereDefender` constructor does `modelTemplate.clone(true)` per placement. Meshy GLB exports often contain `SkinnedMesh` + `Skeleton` metadata even when the rig add-on wasn't purchased. `Object3D.clone(true)` does NOT correctly clone skinned meshes — the clones share the original skeleton's bind matrices and render with broken transforms.
+- The cyborg code already uses `SkeletonUtils.clone` (imported from `three/examples/jsm/utils/SkeletonUtils.js`) for exactly this reason.
+- Most likely fix: replace `modelTemplate.clone(true)` in `SphereDefender.ts:21` with `SkeletonUtils.clone(modelTemplate)`. One-line change. **NOT VERIFIED.**
+- Alternative: `git revert b5aef86 1ec6443` to roll back to last-known-good state (single-sphere singleton, GLB rendered correctly).
+
+### What was attempted this session
+1. **Unified placement state** (commit `1ec6443`) — replaced sphere/cyborg flag soup with a single `PlacementSession` in Game.ts. This part is independently fine and shouldn't be reverted just to fix the sphere visual.
+2. **Billboard HP bars** — every entity (Unit, SphereDefender, PowerCore, Structure) gained a `faceCamera(camera)` method that copies the camera quaternion onto a `hpBarGroup`. Replaces fixed `rotation.x = -π/4` tilt.
+3. **Structure offset fix** — `Structure.worldY` was hardcoded to `-350 + ...` instead of `Config.WORLD.BOTTOM + ...`; now uses Config. Independently a real bug fix.
+4. **Permanent zone tints** — both sides get a subtle always-on tint during build phase.
+5. **Multi-sphere refactor** (commit `b5aef86`) — Sphere is no longer a singleton. Game stores `sphereTemplate: THREE.Object3D` (loaded once, awaited) + `spheres: SphereDefender[]`. SphereDefender clones the template per instance. Sphere button stays enabled until credits run out.
+6. **Awaited GLB load** — `init()` now waits for `sphere.glb` to fully load before showing the game, so the cyan fallback never appears during normal load.
+
+### My mistakes this session (for honesty, so the next session reads from a clean slate)
+- **Claimed PowerCore had no HP bar.** It did — I missed it on first read. Caught by re-reading the file before coding.
+- **Listed structure verification steps in the verify-after-deploy list when there's no structure UI in HUD.** The Structure code path exists in `BuildPhase.ts` and `Structure.ts` but there are no shop buttons for turret/wall/cannon/mine yet. User correctly called this out.
+- **Confidently asserted the sphere GLB is intrinsically oblate, without inspecting the asset.** User showed the Meshy preview of the GLB — it's a perfect round sphere. The warping is from my clone code, not the asset. This was the worst of the session and the reason the user lost trust. Memory written: see `feedback_dont_blame_asset.md`.
+- **Pattern: I made multiple confident wrong claims in a row.** Each correction eroded trust further. The lesson is not "be less confident" — it's "verify before asserting, and after the first wrong claim in a session the bar for the next assertion should go up, not just hedge it." Memory written: see `feedback_dont_claim_works.md`.
+
+### Repo state at session end
+- Working tree clean
+- Branch `main` is at `b5aef86` (multi-sphere refactor), pushed to GitHub
+- Production deploy is on `b5aef86` — broken sphere visuals
+- Pre-broken last-good commit: `f27a2a6` (or any commit before `1ec6443`)
+- Files most relevant to the sphere-clone bug: `src/entities/SphereDefender.ts:21`, `src/game/Game.ts` `loadSphereTemplate`
+
+### Suggested next-session opening moves
+1. Decide direction: revert (`git revert b5aef86 1ec6443`) vs forward-fix (`SkeletonUtils.clone`)
+2. If forward-fix: change `SphereDefender.ts:21` from `this.inner.add(modelTemplate.clone(true))` to use `SkeletonUtils.clone`, redeploy, playtest
+3. If still warped after fix: inspect the GLB itself in a Three.js editor or `npx @gltf-transform/cli inspect public/models/sphere.glb` to see if there's non-uniform scale baked into nested children
