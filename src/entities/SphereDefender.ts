@@ -58,18 +58,21 @@ export class SphereDefender {
     this.mesh.position.set(x, y, 0)
 
     const firstTex = sphereTexturesLoaded ? sphereTextures[0] : null
-    // depthWrite: false stops the sprite quad's transparent pixels from
-    // blocking the cyan zone tint behind it (would leave brown rectangles).
-    // alphaTest discards fully transparent pixels for clean edges.
+    // depthTest: false so the sphere is never occluded by ground / fence
+    // line / anything else's depth buffer. depthWrite: false so it doesn't
+    // poison the buffer for whatever draws after. alphaTest preserves clean
+    // pixel-art edges. renderOrder bumps it after background elements.
     const mat = new THREE.SpriteMaterial({
       map: firstTex,
       transparent: true,
+      depthTest: false,
       depthWrite: false,
       alphaTest: 0.1,
     })
     this.sprite = new THREE.Sprite(mat)
     this.sprite.scale.set(SPHERE_SCREEN_SIZE, SPHERE_SCREEN_SIZE, 1)
     this.sprite.position.set(0, 0, 5)
+    this.sprite.renderOrder = 10
     this.mesh.add(this.sprite)
 
     const { group, fill } = this.buildHpBar()
