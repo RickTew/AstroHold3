@@ -48,8 +48,11 @@ export class Game {
   private attZoneMesh: THREE.Mesh | null = null
   private defZoneMesh: THREE.Mesh | null = null
 
-  // Multi-sphere: one template, many cloned instances per placement.
-  private sphereTemplate: THREE.Object3D | null = null
+  // Multi-sphere: the raw GLB bytes are cached once; each placement re-parses a
+  // fresh THREE scene from the buffer. Avoids Object3D.clone(true), which was
+  // breaking shape on repeat placements.
+  private sphereGlbBuffer: ArrayBuffer | null = null
+  private sphereScale = 1
   private spheres: SphereDefender[] = []
 
   // Single source of truth for any active placement.
@@ -109,36 +112,59 @@ export class Game {
     this.enterBuildPhase()
   }
 
-  // Loads sphere.glb once and stores a normalized model as the clone source.
-  // Falls back to a plain SphereGeometry only if the GLB load fails.
+  // Loads sphere.glb as raw bytes once and pre-parses a sample to derive the
+  // uniform scale factor. Each placement re-parses from the buffer (see
+  // makeSphereModel) so we never share or clone Object3D instances between
+  // placements — clone(true) was producing distorted shapes.
   private loadSphereTemplate(): Promise<void> {
-    return new Promise<void>(resolve => {
-      const loader = new GLTFLoader()
-      loader.load(
-        '/models/sphere.glb',
-        gltf => {
-          const model = gltf.scene
-          const box = new THREE.Box3().setFromObject(model)
+    return fetch('/models/sphere.glb')
+      .then(r => {
+        if (!r.ok) throw new Error('sphere.glb fetch failed')
+        return r.arrayBuffer()
+      })
+      .then(buffer => new Promise<void>((resolve, reject) => {
+        this.sphereGlbBuffer = buffer
+        new GLTFLoader().parse(buffer, '', gltf => {
+          const box = new THREE.Box3().setFromObject(gltf.scene)
           const size = new THREE.Vector3()
           box.getSize(size)
           const maxDim = Math.max(size.x, size.y, size.z)
-          if (maxDim > 0) model.scale.setScalar(36 / maxDim)
-          this.sphereTemplate = model
+          this.sphereScale = maxDim > 0 ? 36 / maxDim : 1
           resolve()
+        }, reject)
+      }))
+      .catch(() => {
+        // Network or parse failure — leave buffer null; makeSphereModel will
+        // hand out a MeshBasicMaterial fallback so the game still works.
+        this.sphereGlbBuffer = null
+      })
+  }
+
+  // Build a fresh sphere model for a single placement. Resolves with a
+  // SphereGeometry fallback if the GLB buffer is missing or parse fails.
+  private makeSphereModel(): Promise<THREE.Object3D> {
+    if (!this.sphereGlbBuffer) return Promise.resolve(this.makeSphereFallback())
+    return new Promise(resolve => {
+      new GLTFLoader().parse(
+        this.sphereGlbBuffer!,
+        '',
+        gltf => {
+          gltf.scene.scale.setScalar(this.sphereScale)
+          resolve(gltf.scene)
         },
-        undefined,
-        () => {
-          // Fallback only on failure — basic-material sphere so it renders
-          // correctly under the scene's bright ambient lighting.
-          const fallback = new THREE.Mesh(
-            new THREE.SphereGeometry(18, 24, 24),
-            new THREE.MeshBasicMaterial({ color: 0x44ccff })
-          )
-          this.sphereTemplate = fallback
-          resolve()
-        }
+        () => resolve(this.makeSphereFallback())
       )
     })
+  }
+
+  private makeSphereFallback(): THREE.Object3D {
+    const group = new THREE.Group()
+    const ball = new THREE.Mesh(
+      new THREE.SphereGeometry(18, 24, 24),
+      new THREE.MeshBasicMaterial({ color: 0x44ccff })
+    )
+    group.add(ball)
+    return group
   }
 
   private enterBuildPhase() {
@@ -209,9 +235,13 @@ export class Game {
       zoneXMin: Config.WORLD.LEFT,
       zoneXMax: Config.DEFENDER_MAX_X,
       onPlace: (x, y) => {
-        if (!this.buildPhase || !this.sphereTemplate) return false
+        if (!this.buildPhase) return false
         if (!this.buildPhase.spendCredits(SPHERE_COST)) return false
-        this.spheres.push(new SphereDefender(this.scene, x, y, this.sphereTemplate))
+        // Parse a fresh GLB scene per placement (no clone). Credits are spent
+        // synchronously above so the parse delay can't double-charge.
+        this.makeSphereModel().then(model => {
+          this.spheres.push(new SphereDefender(this.scene, x, y, model))
+        })
         return false  // multi-place — keep selecting until user cancels or credits run out
       },
     }
@@ -410,7 +440,7 @@ export class Game {
     this.removeZoneTint('def')
     for (const s of this.spheres) this.scene.remove(s.mesh)
     this.spheres = []
-    this.sphereTemplate = null
+    this.sphereGlbBuffer = null
     this.renderer.dispose()
     this.scene.clear()
     this.hud?.dispose()

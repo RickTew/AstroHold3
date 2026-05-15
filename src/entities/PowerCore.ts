@@ -1,15 +1,16 @@
 import * as THREE from 'three'
 import { Config } from '../game/GameConfig'
 
+// Power Core = the base the defender is protecting. Visually a chunky angular
+// bunker (box) so it can never be mistaken for a placeable sphere defender.
 export class PowerCore {
   readonly mesh: THREE.Group
   hp: number
   readonly maxHp: number
   private hpBarGroup: THREE.Group
   private hpBar: THREE.Mesh
-  private coreMesh: THREE.Mesh
-  private ring1: THREE.Mesh
-  private ring2Container: THREE.Group
+  private body: THREE.Mesh
+  private antenna: THREE.Mesh
   private pulseTime = 0
 
   constructor(scene: THREE.Scene) {
@@ -17,48 +18,46 @@ export class PowerCore {
     this.mesh = new THREE.Group()
     this.mesh.position.set(Config.POWER_CORE.X, Config.POWER_CORE.Y, 0)
 
-    // Point light — actual 3D illumination on surroundings
-    const light = new THREE.PointLight(0x00aaff, 4, 140)
-    this.mesh.add(light)
+    const size = Config.POWER_CORE.RADIUS * 2.4  // square footprint, slightly larger
 
-    // Ring 1 — in XY plane, spins around Z
-    const ringGeo1 = new THREE.TorusGeometry(Config.POWER_CORE.RADIUS + 10, 3, 8, 48)
-    const ringMat1 = new THREE.MeshStandardMaterial({
-      color: 0x00aadd,
-      emissive: new THREE.Color(0x005577),
-      emissiveIntensity: 1.1,
+    // Main body — flat-roofed box, emissive cyan edge glow
+    const bodyGeo = new THREE.BoxGeometry(size, size, size * 0.75)
+    const bodyMat = new THREE.MeshStandardMaterial({
+      color: 0x335577,
+      emissive: new THREE.Color(0x0a2233),
+      emissiveIntensity: 0.6,
+      metalness: 0.5,
+      roughness: 0.55,
     })
-    this.ring1 = new THREE.Mesh(ringGeo1, ringMat1)
-    this.mesh.add(this.ring1)
+    this.body = new THREE.Mesh(bodyGeo, bodyMat)
+    this.mesh.add(this.body)
 
-    // Ring 2 — perpendicular to ring 1 (in YZ plane), spins around its own Z
-    const ringGeo2 = new THREE.TorusGeometry(Config.POWER_CORE.RADIUS + 10, 3, 8, 48)
-    const ringMat2 = new THREE.MeshStandardMaterial({
-      color: 0x0066ff,
-      emissive: new THREE.Color(0x002288),
-      emissiveIntensity: 1.1,
-    })
-    this.ring2Container = new THREE.Group()
-    this.ring2Container.rotation.y = Math.PI / 2  // stand it perpendicular to ring 1
-    const ring2Mesh = new THREE.Mesh(ringGeo2, ringMat2)
-    this.ring2Container.add(ring2Mesh)
-    this.mesh.add(this.ring2Container)
+    // Edge wire — emissive outline so the cube reads clearly from a distance
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(bodyGeo),
+      new THREE.LineBasicMaterial({ color: 0x00ddff })
+    )
+    this.mesh.add(edges)
 
-    // Core — octahedron crystal (angular and clearly 3D from any camera angle)
-    const coreGeo = new THREE.OctahedronGeometry(Config.POWER_CORE.RADIUS * 0.85, 0)
-    const coreMat = new THREE.MeshStandardMaterial({
+    // Antenna spike on top, also angular (a small box, not a cylinder)
+    const antGeo = new THREE.BoxGeometry(size * 0.18, size * 0.18, size * 0.6)
+    const antMat = new THREE.MeshStandardMaterial({
       color: 0x00ffee,
-      emissive: new THREE.Color(0x00bbaa),
-      emissiveIntensity: 2.0,
-      roughness: 0.1,
-      metalness: 0.4,
+      emissive: new THREE.Color(0x00aabb),
+      emissiveIntensity: 1.5,
     })
-    this.coreMesh = new THREE.Mesh(coreGeo, coreMat)
-    this.mesh.add(this.coreMesh)
+    this.antenna = new THREE.Mesh(antGeo, antMat)
+    this.antenna.position.set(0, 0, size * 0.6)
+    this.mesh.add(this.antenna)
+
+    // Point light gives the bunker some ambient illumination on neighbors
+    const light = new THREE.PointLight(0x00aaff, 3, 160)
+    light.position.set(0, 0, size * 0.5)
+    this.mesh.add(light)
 
     // HP bar — billboarded to face camera each frame (faceCamera method)
     this.hpBarGroup = new THREE.Group()
-    this.hpBarGroup.position.set(0, 44, 0)
+    this.hpBarGroup.position.set(0, size * 0.9, 0)
     const bgBar = new THREE.Mesh(
       new THREE.PlaneGeometry(70, 8),
       new THREE.MeshBasicMaterial({ color: 0x222222 })
@@ -87,17 +86,17 @@ export class PowerCore {
     this.hpBar.position.x = -(1 - ratio) * 35
     const mat = this.hpBar.material as THREE.MeshBasicMaterial
     mat.color.setHex(ratio > 0.5 ? 0x00ff88 : ratio > 0.25 ? 0xffaa00 : 0xff2200)
-    this.flashCore()
+    this.flashBody()
   }
 
-  private flashCore() {
-    const mat = this.coreMesh.material as THREE.MeshStandardMaterial
+  private flashBody() {
+    const mat = this.body.material as THREE.MeshStandardMaterial
     const savedHex = mat.emissive.getHex()
     mat.emissive.setHex(0xff2200)
-    mat.emissiveIntensity = 3.5
+    mat.emissiveIntensity = 2.5
     setTimeout(() => {
       mat.emissive.setHex(savedHex)
-      mat.emissiveIntensity = 2.0
+      mat.emissiveIntensity = 0.6
     }, 200)
   }
 
@@ -105,11 +104,8 @@ export class PowerCore {
 
   update(delta: number) {
     this.pulseTime += delta
-    this.ring1.rotation.z += delta * 0.8
-    this.ring2Container.rotation.z += delta * -0.5   // opposite direction
-    this.coreMesh.rotation.y += delta * 0.4           // tumbling crystal
-    this.coreMesh.rotation.x += delta * 0.25
-    const mat = this.coreMesh.material as THREE.MeshStandardMaterial
-    mat.emissiveIntensity = 1.8 + Math.sin(this.pulseTime * 3.5) * 0.4
+    // Antenna pulses (just emissive), no rotation — a bunker shouldn't spin
+    const antMat = this.antenna.material as THREE.MeshStandardMaterial
+    antMat.emissiveIntensity = 1.2 + Math.sin(this.pulseTime * 3.5) * 0.4
   }
 }

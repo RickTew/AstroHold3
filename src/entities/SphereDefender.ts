@@ -14,8 +14,10 @@ export class SphereDefender {
   private hpBarGroup: THREE.Group
   private hpBarFill: THREE.Mesh
 
-  // Caller owns the model template; SphereDefender deep-clones it per instance.
-  constructor(scene: THREE.Scene, x: number, y: number, modelTemplate: THREE.Object3D) {
+  // Caller hands over a fresh, owned model (one per placement). SphereDefender
+  // mounts it directly with no clone — cloning Object3Ds across placements was
+  // distorting the visual.
+  constructor(scene: THREE.Scene, x: number, y: number, model: THREE.Object3D) {
     this.worldX = x
     this.worldY = y
     this.hp = this.maxHp
@@ -24,7 +26,7 @@ export class SphereDefender {
     this.mesh.position.set(x, y, 0)
 
     this.inner = new THREE.Group()
-    this.inner.add(modelTemplate.clone(true))
+    this.inner.add(model)
     this.mesh.add(this.inner)
 
     const { group, fill } = this.buildHpBar()
