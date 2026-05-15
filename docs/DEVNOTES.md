@@ -310,3 +310,65 @@ Per CLAUDE.md, swapped fallback `MeshStandardMaterial` → `MeshBasicMaterial` s
 1. Decide direction: revert (`git revert b5aef86 1ec6443`) vs forward-fix (`SkeletonUtils.clone`)
 2. If forward-fix: change `SphereDefender.ts:21` from `this.inner.add(modelTemplate.clone(true))` to use `SkeletonUtils.clone`, redeploy, playtest
 3. If still warped after fix: inspect the GLB itself in a Three.js editor or `npx @gltf-transform/cli inspect public/models/sphere.glb` to see if there's non-uniform scale baked into nested children
+
+---
+
+## Session 6 (2026-05-15) — Sphere → pixel sprite; UX polish; remove cyan tints
+
+### Major direction change: sphere is now a PIXEL SPRITE, not a 3D GLB
+- 8 directional PNGs in `/public/sprites/sphere/` (~3 KB each, ~24 KB total) replace the 60 MB sphere.glb. ~3000× smaller payload, instant placement.
+- `SphereDefender` uses `THREE.Sprite` with `NearestFilter` for crisp pixel scaling. `update(delta)` cycles through the 8 directions on a 0.4 s timer → ~3.2 s full spin.
+- All GLB sphere infrastructure (loadSphereTemplate, makeSphereModel, sphereGlbBuffer, sphereScale, GLTFLoader import) gone from Game.ts.
+- **Render flags that matter for sprite-on-3D-scene:**
+  - `depthTest: false` so the sprite is never occluded by ground/fence depth. The billboard quad shares a single camera-space depth for all four corners, so depth failure was all-or-nothing (caused the entire sphere top to vanish when placed near the fence).
+  - `depthWrite: false` so the sprite doesn't poison the buffer for later draws.
+  - `alphaTest: 0.1` to discard fully transparent pixels for clean pixel-art edges.
+  - `renderOrder: 10` so it sequences after ground/fence in transparent sort.
+
+### Removed cyan/red zone tints → thin fence borders
+- The semi-transparent tint planes were washing out sprite colors and creating "phantom edges" where they ended. Replaced with `makeZoneBorder()` LineSegments rectangle at z=0.4.
+- Placement-time bright tint also dropped; the ghost ring at cursor is enough feedback.
+
+### Cyborg model now Iron Arm Sentinel + merged animations format
+- `/public/models/cyborg/character.glb` (mesh + skeleton) and `/public/models/cyborg/animations.glb` (13 clips, single file): Idle, Running, Walking, Dead, Hit_Reaction_1, Female_Crouch_Pick_Gun_Point_Forward, Rifle_Aim_Turn_Right, Run_and_Shoot, Forward_Roll_and_Fire, Gun_Hold_Left_Turn, Crouch_Pull_and_Throw, Crouch_Walk_with_Torch, Spartan_Kick.
+- `Unit.preload()` now loads BOTH from `animations.glb` (using its `gltf.scene` as the character template too — separate character.glb had a different bind pose that caused Idle and Crouch_Pick_Gun to render distorted).
+- Track filter strips `*.scale` (we set MODEL_SCALE) AND `Hips.position` (no root motion drift in test mode).
+- **Known issue:** Meshy labeled the clips wrong inside the GLB — "Walking" plays the death animation, "Dead" plays hit reaction, etc. The DATA is correct; the NAMES are mislabeled by Meshy export. Either re-export with corrected labels, or add a name-remap table in Unit.ts. See `feedback_small_feedback_small_change.md` for related guidance.
+- Test mode added: each cyborg drop cycles through ALL_ANIM_CLIPS via `getAllAnimClips()` (returns clip objects, not strings — bulletproof). Canvas-textured label above each cyborg shows the clip name being played.
+
+### Camera/world simplifications
+- Camera back to (0, 300, 300), 45° tilt — the known-good angle. Earlier in the session I tried straight top-down and a tilt-with-model-rotation; both were wrong. Reverted with memory `feedback_small_feedback_small_change.md`.
+- Removed both grids (Game.ts ground grid + BuildPhase placement grid). The placement ghost ring is enough cell indicator. COLS/ROWS constants kept in BuildPhase for placement bounds checking only.
+
+### Cyborg combat improvements
+- `Unit.facingY` field persists across animation swaps so faceTarget rotations stick (swapAnim was resetting rotation.y to -π/2 every idle↔running, wiping faceTarget).
+- `Unit.faceTarget(x, y)` called before each Projectile spawn in BattlePhase (sphere, structure, core engagements). Units visibly rotate to face their target.
+- `Unit.getMuzzlePoint()` returns a point 22u in front of the unit. Projectiles spawn from there instead of (worldX, worldY + 20) → shots leave from the front, not the belly.
+- Unit projectile color 0x00ccff → 0xff3333 (red). Sphere/structure/core projectiles keep their colors so you can tell who's shooting.
+
+### Range balance
+- Sphere range 200 → 300. Outranges scout (280), tank (200), bomber (160). Only drone (350, designed sniper) still outranges.
+
+### UI polish
+- HP bar bg 0x222222 → 0xcc2222 (red) on Unit, SphereDefender, PowerCore — damaged HP reads as red lost / green remaining.
+- PowerCore rewritten as a chunky box + antenna spike + emissive edge wire (was octahedron+rings — looked too much like a sphere).
+- PowerCore antenna repositioned to +Y world (was at +Z which projects DOWN on screen at our 45° tilt — looked upside down).
+- `START_CREDITS` 200 → 1000 for testing. Tune down for production.
+- Click on a placed sphere or cyborg during build phase → refund + remove. `tryRefund(x, y)` checks both arrays before falling through to placement logic. `BuildPhase.addCredits()` added for sphere refund path.
+- Per-entity placement clamp: PlacementSession now carries marginTop/marginBottom. Sphere = 50/50 (sprite is symmetric ~90 tall). Cyborg = 45/20 (head extends ~40 above feet).
+
+### Required model orientation (added to CLAUDE.md)
+- New humanoid models need body axis +Y, front face +Z, origin at feet (standard Meshy/glTF). Documented in CLAUDE.md "Required model orientation" section.
+
+### Repo state at session end
+- Working tree clean, branch `main` at `d7ddcb7` (depth-test fix), production deployed.
+- All recent commits on main, pushed to GitHub.
+- Live: https://astrohold3.vercel.app
+
+### Suggested next-session opening moves
+1. **Sphere HP bar position.** Bar is at local (0, 55, 0), which after 45° camera projection puts it noticeably high *above* the sphere body, sometimes outside the fence when sphere is placed near the top. Either:
+   - Lower the offset (e.g., local 35) so it sits closer to the sphere top
+   - Or render HP bars at fixed screen distance using camera-space offset instead of world-space
+2. **Cyborg animation naming.** Either re-export from Meshy with corrected labels, OR add a remap table in Unit.ts (`MESHY_NAME → ACTUAL_CONTENT_NAME`). Need user input to identify each clip's actual content visually.
+3. **Wire `shoot` / `grenade` animation states.** Once names are correct, hook firing → "Female_Crouch_Pick_Gun_Point_Forward" or "Rifle_Aim_Turn_Right"; bomber → "Crouch_Pull_and_Throw". Brief play during projectile spawn.
+4. **Consider pixel-sprite-ifying the cyborg** if the user wants to commit to the pixel-art aesthetic. PixelLab can render the cyborg at 8 directions per anim state, similar to the sphere. Would eliminate the Meshy labeling mess entirely.
