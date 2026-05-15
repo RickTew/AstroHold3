@@ -3,7 +3,7 @@ export const Config = {
   DEFENDER_MAX_X: -200,
   ATTACKER_MIN_X: 200,
   GRID_CELL: 50,
-  START_CREDITS: 200,
+  START_CREDITS: 300,  // bumped from 200 so all 13 anim-test cyborgs (20cr scout) fit in a session
   TURN_INTERVAL: 0.65,   // seconds per battle turn — also drives unit move speed
   POWER_CORE: { X: -550, Y: 0, HP: 100, RADIUS: 18 },
 

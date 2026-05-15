@@ -74,22 +74,21 @@ export class Unit {
   private testIdleClip: string | null = null
 
   static async preload(): Promise<void> {
-    const character = new Promise<void>(resolve => {
-      loader.load(
-        '/models/cyborg/character.glb',
-        gltf => { assets.characterTemplate = gltf.scene; resolve() },
-        undefined,
-        () => { console.warn('character.glb missing — using fallback'); resolve() }
-      )
-    })
-    const animations = new Promise<void>(resolve => {
+    // Load BOTH mesh and clips from the merged animations.glb. The separate
+    // character.glb has a slightly different bind pose, which makes some
+    // clips (Idle, Crouch_Pick_Gun) render at wrong scale / fragmented.
+    await new Promise<void>(resolve => {
       loader.load(
         '/models/cyborg/animations.glb',
         gltf => {
+          assets.characterTemplate = gltf.scene
           for (const clip of gltf.animations) {
-            // Meshy bakes scale into animation tracks — strip them so our
-            // clone.scale.setScalar(MODEL_SCALE) is the sole scale authority.
-            clip.tracks = clip.tracks.filter(t => !t.name.endsWith('.scale'))
+            // Strip baked scale tracks (we control scale via MODEL_SCALE), and
+            // strip Hips translation so root motion doesn't drift the unit off
+            // its placed spot during test mode.
+            clip.tracks = clip.tracks.filter(t =>
+              !t.name.endsWith('.scale') && !t.name.startsWith('Hips.position')
+            )
             assets.clips.set(clip.name, clip)
           }
           resolve()
@@ -98,7 +97,6 @@ export class Unit {
         () => { console.warn('animations.glb missing — using fallback'); resolve() }
       )
     })
-    await Promise.all([character, animations])
   }
 
   constructor(
