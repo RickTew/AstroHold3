@@ -4,7 +4,7 @@ import { Structure } from '../entities/Structure'
 import { HUD } from '../ui/HUD'
 
 const COLS = 8
-const ROWS = 8  // 400 / 50 = 8 (world height changed from 700 to 400)
+const ROWS = 8  // 400 / 50 — used for placement bounds checking, not for any visible grid
 
 export class BuildPhase {
   private structures: Structure[] = []
@@ -12,7 +12,6 @@ export class BuildPhase {
   private selectedType: StructureType | null = null
   private credits: number
 
-  private gridGroup: THREE.Group
   private hitPlane: THREE.Mesh
   private ghostMesh: THREE.Mesh | null = null
 
@@ -26,15 +25,12 @@ export class BuildPhase {
     startCredits: number
   ) {
     this.credits = startCredits
-    this.gridGroup = new THREE.Group()
-    scene.add(this.gridGroup)
 
     const pcCol = Math.floor((Config.POWER_CORE.X - Config.WORLD.LEFT) / Config.GRID_CELL)
     const pcRow = Math.floor((Config.POWER_CORE.Y - Config.WORLD.BOTTOM) / Config.GRID_CELL)
     this.occupied.add(`${pcCol},${pcRow}`)
 
     this.hitPlane = this.buildHitPlane()
-    this.buildGrid()
 
     hud.setCredits(this.credits)
     hud.onSelectStructure = (type) => { this.selectedType = type }
@@ -43,27 +39,7 @@ export class BuildPhase {
     window.addEventListener('click', this.onClick)
   }
 
-  private buildGrid() {
-    const mat = new THREE.LineBasicMaterial({ color: 0x1a3a55, transparent: true, opacity: 0.25 } as THREE.LineBasicMaterialParameters)
-    for (let c = 0; c <= COLS; c++) {
-      const x = Config.WORLD.LEFT + c * Config.GRID_CELL
-      const pts = [
-        new THREE.Vector3(x, Config.WORLD.BOTTOM, 0.3),
-        new THREE.Vector3(x, Config.WORLD.TOP, 0.3),
-      ]
-      this.gridGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat))
-    }
-    for (let r = 0; r <= ROWS; r++) {
-      const y = Config.WORLD.BOTTOM + r * Config.GRID_CELL
-      const pts = [
-        new THREE.Vector3(Config.WORLD.LEFT, y, 0.3),
-        new THREE.Vector3(Config.DEFENDER_MAX_X, y, 0.3),
-      ]
-      this.gridGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat))
-    }
-  }
-
-  private buildHitPlane(): THREE.Mesh {
+private buildHitPlane(): THREE.Mesh {
     const W = Config.DEFENDER_MAX_X - Config.WORLD.LEFT   // 400
     const H = Config.WORLD.TOP - Config.WORLD.BOTTOM       // 400
     const geo = new THREE.PlaneGeometry(W, H)
@@ -157,7 +133,6 @@ export class BuildPhase {
     window.removeEventListener('mousemove', this.onMouseMove)
     window.removeEventListener('click', this.onClick)
     this.hideGhost()
-    this.gridGroup.removeFromParent()
     this.hitPlane.removeFromParent()
   }
 }
