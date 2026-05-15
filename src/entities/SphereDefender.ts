@@ -1,25 +1,55 @@
 import * as THREE from 'three'
 
+// Pre-rendered pixel-art sphere: 8 directions. Cycling through them on a
+// timer creates the "spinning" effect — far cheaper than the 60 MB GLB.
+const SPHERE_DIRECTIONS = [
+  'south', 'south-east', 'east', 'north-east',
+  'north', 'north-west', 'west', 'south-west',
+] as const
+const SPHERE_FRAME_INTERVAL = 0.12   // seconds per direction = ~1 s per full spin
+const SPHERE_SCREEN_SIZE = 44        // sprite world-units (slightly larger than the old GLB at 36)
+
+const sphereTextures: THREE.Texture[] = []
+let sphereTexturesLoaded = false
+
+export async function preloadSphereSprites(): Promise<void> {
+  const loader = new THREE.TextureLoader()
+  await Promise.all(SPHERE_DIRECTIONS.map((dir, i) =>
+    new Promise<void>((resolve, reject) => {
+      loader.load(
+        `/sprites/sphere/${dir}.png`,
+        tex => {
+          tex.magFilter = THREE.NearestFilter   // crisp pixel-art scaling
+          tex.minFilter = THREE.NearestFilter
+          tex.colorSpace = THREE.SRGBColorSpace
+          sphereTextures[i] = tex
+          resolve()
+        },
+        undefined,
+        reject
+      )
+    })
+  ))
+  sphereTexturesLoaded = true
+}
+
 export class SphereDefender {
-  readonly mesh: THREE.Group       // outer, positioned in scene, never rotates
-  private inner: THREE.Group       // rotates around Y
+  readonly mesh: THREE.Group
   worldX: number
   worldY: number
   hp: number
   readonly maxHp = 300
   isDead = false
-  // Sphere outranges most attacker types — it's the 100cr defender. Only the
-  // sniper drone (range 350) outranges it; scout/tank/bomber all lose at distance.
   readonly range = 300
   readonly damage = 10
 
+  private sprite: THREE.Sprite
   private hpBarGroup: THREE.Group
   private hpBarFill: THREE.Mesh
+  private spinTime = 0
+  private frameIndex = 0
 
-  // Caller hands over a fresh, owned model (one per placement). SphereDefender
-  // mounts it directly with no clone — cloning Object3Ds across placements was
-  // distorting the visual.
-  constructor(scene: THREE.Scene, x: number, y: number, model: THREE.Object3D) {
+  constructor(scene: THREE.Scene, x: number, y: number) {
     this.worldX = x
     this.worldY = y
     this.hp = this.maxHp
@@ -27,9 +57,12 @@ export class SphereDefender {
     this.mesh = new THREE.Group()
     this.mesh.position.set(x, y, 0)
 
-    this.inner = new THREE.Group()
-    this.inner.add(model)
-    this.mesh.add(this.inner)
+    const firstTex = sphereTexturesLoaded ? sphereTextures[0] : null
+    const mat = new THREE.SpriteMaterial({ map: firstTex, transparent: true })
+    this.sprite = new THREE.Sprite(mat)
+    this.sprite.scale.set(SPHERE_SCREEN_SIZE, SPHERE_SCREEN_SIZE, 1)
+    this.sprite.position.set(0, 0, 5)
+    this.mesh.add(this.sprite)
 
     const { group, fill } = this.buildHpBar()
     this.hpBarGroup = group
@@ -39,7 +72,14 @@ export class SphereDefender {
   }
 
   update(delta: number) {
-    this.inner.rotation.y += delta * 0.5
+    if (!sphereTexturesLoaded) return
+    this.spinTime += delta
+    const next = Math.floor(this.spinTime / SPHERE_FRAME_INTERVAL) % SPHERE_DIRECTIONS.length
+    if (next !== this.frameIndex) {
+      this.frameIndex = next
+      this.sprite.material.map = sphereTextures[next]
+      this.sprite.material.needsUpdate = true
+    }
   }
 
   faceCamera(camera: THREE.Camera) {
@@ -62,7 +102,7 @@ export class SphereDefender {
 
   private buildHpBar(): { group: THREE.Group; fill: THREE.Mesh } {
     const group = new THREE.Group()
-    group.position.set(0, 30, 0)
+    group.position.set(0, 32, 0)
 
     const bg = new THREE.Mesh(
       new THREE.PlaneGeometry(30, 4),

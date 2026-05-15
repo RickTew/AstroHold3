@@ -1,9 +1,8 @@
 import * as THREE from 'three'
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { Config, UnitType } from './GameConfig'
 import { Background } from '../scene/Background'
 import { PowerCore } from '../entities/PowerCore'
-import { SphereDefender } from '../entities/SphereDefender'
+import { SphereDefender, preloadSphereSprites } from '../entities/SphereDefender'
 import { Unit, getAllAnimClips } from '../entities/Unit'
 import { HUD } from '../ui/HUD'
 import { AIPlayer } from '../ai/AIPlayer'
@@ -48,11 +47,8 @@ export class Game {
   private attZoneMesh: THREE.Mesh | null = null
   private defZoneMesh: THREE.Mesh | null = null
 
-  // Multi-sphere: the raw GLB bytes are cached once; each placement re-parses a
-  // fresh THREE scene from the buffer. Avoids Object3D.clone(true), which was
-  // breaking shape on repeat placements.
-  private sphereGlbBuffer: ArrayBuffer | null = null
-  private sphereScale = 1
+  // Multi-sphere: now sprite-based (8 directional pixel-art PNGs, ~24 KB total
+  // instead of the 60 MB GLB). Pre-loaded in preloadSphereSprites().
   private spheres: SphereDefender[] = []
 
   // Single source of truth for any active placement.
@@ -103,89 +99,14 @@ export class Game {
     // Block UI until all visuals are ready, so placements never show the swap.
     await Promise.all([
       Unit.preload(),
-      this.loadSphereTemplate(),
+      preloadSphereSprites(),
     ])
 
     this.hud.showGame()
     this.enterBuildPhase()
   }
 
-  // Loads sphere.glb as raw bytes once and pre-parses a sample to derive the
-  // uniform scale factor. Each placement re-parses from the buffer (see
-  // makeSphereModel) so we never share or clone Object3D instances between
-  // placements — clone(true) was producing distorted shapes.
-  private loadSphereTemplate(): Promise<void> {
-    return fetch('/models/sphere.glb')
-      .then(r => {
-        if (!r.ok) throw new Error('sphere.glb fetch failed')
-        return r.arrayBuffer()
-      })
-      .then(buffer => new Promise<void>((resolve, reject) => {
-        this.sphereGlbBuffer = buffer
-        new GLTFLoader().parse(buffer, '', gltf => {
-          const box = new THREE.Box3().setFromObject(gltf.scene)
-          const size = new THREE.Vector3()
-          box.getSize(size)
-          // Scale by the smallest bbox axis, not the largest. The asset is ~14%
-          // wider on X than Y/Z (small features or slight body stretch). Using
-          // min keeps the body at full target diameter; longer-axis features
-          // just extend a touch past the 36-unit reference instead of forcing
-          // the whole body to render compressed.
-          const minDim = Math.min(size.x, size.y, size.z)
-          this.sphereScale = minDim > 0 ? 36 / minDim : 1
-          resolve()
-        }, reject)
-      }))
-      .catch(() => {
-        // Network or parse failure — leave buffer null; makeSphereModel will
-        // hand out a MeshBasicMaterial fallback so the game still works.
-        this.sphereGlbBuffer = null
-      })
-  }
-
-  // Build a fresh sphere model for a single placement. Resolves with a
-  // SphereGeometry fallback if the GLB buffer is missing or parse fails.
-  // Swaps every MeshStandardMaterial for a MeshBasicMaterial that keeps the
-  // base color texture but ignores scene lights — the scene's bright ambient
-  // was blowing out the sphere's dark base color into a washed-out cap on
-  // whatever side was facing the directional light.
-  private makeSphereModel(): Promise<THREE.Object3D> {
-    if (!this.sphereGlbBuffer) return Promise.resolve(this.makeSphereFallback())
-    return new Promise(resolve => {
-      new GLTFLoader().parse(
-        this.sphereGlbBuffer!,
-        '',
-        gltf => {
-          gltf.scene.scale.setScalar(this.sphereScale)
-          gltf.scene.traverse(obj => {
-            const m = obj as THREE.Mesh
-            if (!m.isMesh) return
-            const old = m.material as THREE.MeshStandardMaterial
-            if (!old || !(old as { isMeshStandardMaterial?: boolean }).isMeshStandardMaterial) return
-            m.material = new THREE.MeshBasicMaterial({
-              map: old.map ?? null,
-              color: 0xffffff,
-            })
-            old.dispose()
-          })
-          resolve(gltf.scene)
-        },
-        () => resolve(this.makeSphereFallback())
-      )
-    })
-  }
-
-  private makeSphereFallback(): THREE.Object3D {
-    const group = new THREE.Group()
-    const ball = new THREE.Mesh(
-      new THREE.SphereGeometry(18, 24, 24),
-      new THREE.MeshBasicMaterial({ color: 0x44ccff })
-    )
-    group.add(ball)
-    return group
-  }
-
-  private enterBuildPhase() {
+private enterBuildPhase() {
     this.phase = 'build'
     this.attackerUnits = []
     this.attCredits = Config.START_CREDITS
@@ -255,11 +176,7 @@ export class Game {
       onPlace: (x, y) => {
         if (!this.buildPhase) return false
         if (!this.buildPhase.spendCredits(SPHERE_COST)) return false
-        // Parse a fresh GLB scene per placement (no clone). Credits are spent
-        // synchronously above so the parse delay can't double-charge.
-        this.makeSphereModel().then(model => {
-          this.spheres.push(new SphereDefender(this.scene, x, y, model))
-        })
+        this.spheres.push(new SphereDefender(this.scene, x, y))
         return false  // multi-place — keep selecting until user cancels or credits run out
       },
     }
@@ -467,7 +384,6 @@ private makeGhostRing(color: number, inner: number, outer: number): THREE.Mesh {
     this.removeZoneTint('def')
     for (const s of this.spheres) this.scene.remove(s.mesh)
     this.spheres = []
-    this.sphereGlbBuffer = null
     this.renderer.dispose()
     this.scene.clear()
     this.hud?.dispose()
