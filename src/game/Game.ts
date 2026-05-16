@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { Config, UnitType } from './GameConfig'
 import { Background } from '../scene/Background'
 import { PowerCore, preloadPowerCore } from '../entities/PowerCore'
+import { PixelPowerCore, preloadPixelPowerCore } from '../entities/PixelPowerCore'
 import { SphereDefender, preloadSphereSprites } from '../entities/SphereDefender'
 import { SpriteUnit, preloadSpriteUnit } from '../entities/SpriteUnit'
 import { HUD } from '../ui/HUD'
@@ -44,6 +45,7 @@ export class Game {
   private powerCore!: PowerCore
   // Extra decorative cores for visual diagnostics (not in gameplay logic).
   private showcaseCores: PowerCore[] = []
+  private pixelCore: PixelPowerCore | null = null
   private hud!: HUD
   private buildPhase: BuildPhase | null = null
   private battlePhase: BattlePhase | null = null
@@ -123,6 +125,7 @@ export class Game {
       preloadSpriteUnit('grenadier', 'grenadier'),
       preloadSpriteUnit('doublegun', 'doublegun'),
       preloadPowerCore(),
+      preloadPixelPowerCore(),
     ])
 
     // Locked: super is the gameplay core. (textured kept on disk — earmarked
@@ -133,6 +136,10 @@ export class Game {
     // they're seeing is consistent across camera relationships.
     this.showcaseCores.push(new PowerCore(this.scene, 'super', -380, 150))
     this.showcaseCores.push(new PowerCore(this.scene, 'super', -380, -150))
+    // Pixel-sprite alternative for side-by-side comparison. Sprites face the
+    // camera directly so there's no geometric self-occlusion (same reason
+    // the sphere defenders don't lose pieces under the 45° camera).
+    this.pixelCore = new PixelPowerCore(this.scene, -380, 0)
 
     this.hud.showGame()
     this.enterBuildPhase()
@@ -315,6 +322,8 @@ private makeGhostRing(color: number, inner: number, outer: number): THREE.Mesh {
     this.powerCore?.update(delta)
     this.powerCore?.faceCamera(this.camera)
     for (const c of this.showcaseCores) { c.update(delta); c.faceCamera(this.camera) }
+    this.pixelCore?.update(delta)
+    this.pixelCore?.faceCamera(this.camera)
     this.spheres.forEach(s => { s.update(delta); s.faceCamera(this.camera) })
     this.buildPhase?.faceCamera(this.camera)
     this.battlePhase?.update(delta)
