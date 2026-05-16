@@ -128,8 +128,37 @@ export class Game {
     // Pixel power core at the canonical gameplay position, sized 200.
     this.powerCore = new PixelPowerCore(this.scene, Config.POWER_CORE.X, Config.POWER_CORE.Y, 200)
 
+    // Map-wide strategy grid. Game is shifting toward chess-like turn-based
+    // play with one piece per square (see docs/STATS.md). The grid makes the
+    // playable cells visible so positioning is obvious during build phase.
+    this.scene.add(this.makeMapGrid())
+
     this.hud.showGame()
     this.enterBuildPhase()
+  }
+
+  private makeMapGrid(): THREE.LineSegments {
+    const verts: number[] = []
+    const left = Config.WORLD.LEFT
+    const right = Config.WORLD.RIGHT
+    const top = Config.WORLD.TOP
+    const bottom = Config.WORLD.BOTTOM
+    const cell = Config.GRID_CELL
+    const z = 0.3   // just below fence borders (z=0.4), above terrain
+    // Vertical lines
+    for (let x = left; x <= right + 0.5; x += cell) {
+      verts.push(x, bottom, z, x, top, z)
+    }
+    // Horizontal lines
+    for (let y = bottom; y <= top + 0.5; y += cell) {
+      verts.push(left, y, z, right, y, z)
+    }
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3))
+    const mat = new THREE.LineBasicMaterial({
+      color: 0x666666, transparent: true, opacity: 0.32,
+    })
+    return new THREE.LineSegments(geo, mat)
   }
 
 private enterBuildPhase() {
