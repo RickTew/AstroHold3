@@ -372,3 +372,55 @@ Per CLAUDE.md, swapped fallback `MeshStandardMaterial` → `MeshBasicMaterial` s
 2. **Cyborg animation naming.** Either re-export from Meshy with corrected labels, OR add a remap table in Unit.ts (`MESHY_NAME → ACTUAL_CONTENT_NAME`). Need user input to identify each clip's actual content visually.
 3. **Wire `shoot` / `grenade` animation states.** Once names are correct, hook firing → "Female_Crouch_Pick_Gun_Point_Forward" or "Rifle_Aim_Turn_Right"; bomber → "Crouch_Pull_and_Throw". Brief play during projectile spawn.
 4. **Consider pixel-sprite-ifying the cyborg** if the user wants to commit to the pixel-art aesthetic. PixelLab can render the cyborg at 8 directions per anim state, similar to the sphere. Would eliminate the Meshy labeling mess entirely.
+
+---
+
+## Session 7 (2026-05-16) — Sprite cyborgs + sphere HP-bar fix; Meshy retired for characters
+
+### Direction confirmed: NO MORE MESHY for characters
+User decision this session: stop using Meshy for any humanoid/character work. Pixel sprites from PixelLab are the way forward for combatants. Cyborg animation naming (DEVNOTES session 6 leftover #2/#3) is now moot — those threads are closed.
+- Meshy is still the right tool for **inanimate objects** (Power Core next).
+- The existing 3D scout cyborg stays for now (still uses `/public/models/cyborg/animations.glb`), but new attacker types are sprite-only and the scout is a candidate for replacement when convenient.
+
+### Two new sprite attackers wired up
+- **Cannon** — 70cr, 180 HP, speed 55, dmg 35, range 240, no AoE. Heavy hand-cannon direct-fire infantry. Color `0xffaa55`.
+- **Grenadier** — 55cr, 110 HP, speed 75, dmg 28, range 220, aoeRadius 65. Throws grenades with splash damage but **not kamikaze** (lives through the throw). Color `0x88dd44`.
+- Assets: 8 directional PNGs each at `/public/sprites/cannon/` and `/public/sprites/grenadier/` (~16 KB per unit). Source zips: `~/Downloads/astrohold3/Cyborg_Canon_Hand.zip` + `Cyborg_Grenadier.zip` (also include per-state per-direction animation frames we did not extract).
+- HUD: two new buttons in the attacker shop panel.
+
+### New entity class: SpriteUnit (`/src/entities/SpriteUnit.ts`)
+Pixel-sprite cousin of Unit. Public shape matches Unit exactly (`worldX/Y`, `range`, `damage`, `isBomber`, `faceTarget`, `getMuzzlePoint`, `moveTo`, `takeDamage`, `kill`, `update`, `faceCamera`) so `BattlePhase` consumes them through a shared `Attacker = Unit | SpriteUnit` union with zero behavioral special-cases.
+- `preloadSpriteUnit(type, folder)` loads the 8 PNGs into a module-level texture cache; called once per type from `Game.init()`.
+- Direction picker: stores `facingAngle` (math angle in world XY) and remaps to one of 8 sprite names by `Math.round((angle / (π/4) + 8N) % 8)`. Buckets are π/4 wide centered on each direction.
+- `getMuzzlePoint()` projects 26 world units forward along facingAngle so projectiles leave from the weapon hand area, not the chest.
+- Render flags mirror SphereDefender (`depthTest: false`, `depthWrite: false`, `alphaTest: 0.1`, `renderOrder: 10`) — same fence-clipping reason.
+- `SPRITE_SIZE = 60`, sprite anchored low (`position.y = SPRITE_SIZE * 0.35`) so feet sit near `mesh.position.y`.
+
+### Game.makeAttacker(type, x, y) dispatch
+Cannon/grenadier → `new SpriteUnit(...)`. Anything else → `new Unit(...)`. Used both by placement (`startCyborgPlacement.onPlace`) and the AI fallback path in `enterBattlePhase`. The unused 3D `animTestIndex` + `getAllAnimClips` import were removed.
+
+### BattlePhase generalized: aoeRadius drives AoE, isBomber drives kamikaze
+Old code hard-coded `unit.isBomber` for both AoE projectile + self-kill. Refactored to:
+- `const aoe = Config.UNITS[unit.type].aoeRadius; const isAoe = aoe > 0` for the projectile flag and splash radius
+- `if (unit.isBomber) unit.kill()` is now the **only** bomber-specific branch (kamikaze)
+- Grenadier therefore gets AoE projectiles and structure splash on hit, but survives every throw
+
+### Projectile target structurally typed
+Old `targetUnit: Unit | null` was changed to a structural `Trackable = { worldX, worldY, isDead }`. Decouples Projectile from the body classes and lets a homing projectile track a SpriteUnit too.
+
+### SphereDefender HP bar lowered
+- Local y went 55 → 30. Comment in source explains the body fills ~52/108 of the sprite (~22 world-unit half-height); 30 sits just above the body with a small gap and keeps the bar inside the +Y fence when sphere is placed at the edge of the defender zone (marginTop 50 → max sphere y = 150 → bar world y = 180 < fence top 200).
+
+### Power Core: Meshy prompt requested (not yet ordered)
+User plans to commission the Power Core in Meshy. Delivered the prompt as chat text — captured in the project memory `project_powercore_meshy_prompt` for re-use.
+
+### Repo state at session end
+- Branch `main` at `3c2e1d9`, pushed to GitHub, production deployed to https://astrohold3.vercel.app via `vercel --prod`.
+- Pre-session commit: `448330c` (CLAUDE.md hybrid-direction codification).
+- Build is clean (`pnpm build` succeeds, no TypeScript errors).
+
+### Suggested next-session opening moves
+1. **Verify Cannon + Grenadier visually in browser** — placement, walking direction → sprite, muzzle origin, AoE splash on grenadier throws, no kamikaze death. Tune sprite scale (`SPRITE_SIZE = 60`) if pixel art reads too large or small at fixed camera.
+2. **Power Core replacement** — once Meshy returns the GLB, drop it under `/public/models/powercore/`, swap PowerCore.ts's geometric placeholder for a GLB load (mirror the way Unit loaded the cyborg GLB; PowerCore is static so no animation mixer needed).
+3. **Retire the 3D scout?** — if the pixel aesthetic feels right with cannon + grenadier on screen, port scout to SpriteUnit and delete the heavy `/public/models/cyborg/*.glb` files + animation infrastructure in Unit.ts. Optional, not urgent.
+4. **Animation frames in the new zips** — both zips include per-state per-direction animation frame PNGs (`stop_dies_and_drops_dead`, `Medium_Throw`, `Points_canon_arm_forward`, etc.). Not wired up; available if we want firing/death state cycles instead of static rotation poses.
