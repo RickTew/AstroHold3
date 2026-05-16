@@ -130,6 +130,7 @@ export class BattlePhase {
     if (nearestSphere) {
       const sphere = nearestSphere
       unit.faceTarget(sphere.worldX, sphere.worldY)
+      unit.playAttackAnim()
       const muzzle = unit.getMuzzlePoint()
       const proj = new Projectile(
         this.scene, muzzle.x, muzzle.y, null,
@@ -154,6 +155,7 @@ export class BattlePhase {
     if (nearestStruct) {
       const target = nearestStruct
       unit.faceTarget(target.worldX, target.worldY)
+      unit.playAttackAnim()
       const muzzle = unit.getMuzzlePoint()
       const proj = new Projectile(
         this.scene, muzzle.x, muzzle.y, null,
@@ -189,6 +191,7 @@ export class BattlePhase {
 
     if (dist <= Config.POWER_CORE.RADIUS + 20) {
       unit.faceTarget(tx, ty)
+      unit.playAttackAnim()
       const muzzle = unit.getMuzzlePoint()
       const unitX = muzzle.x
       const unitY = muzzle.y
