@@ -34,6 +34,8 @@ export class HUD {
         <button id="battle-btn">BATTLE</button>
         <div id="attacker-shop" class="shop-panel att-panel">
           <button class="att-btn" data-type="scout">Cyborg 20cr</button>
+          <button class="att-btn" data-type="cannon">Cannon 70cr</button>
+          <button class="att-btn" data-type="grenadier">Grenadier 55cr</button>
         </div>
       </div>
       <div id="game-message" class="hidden"></div>

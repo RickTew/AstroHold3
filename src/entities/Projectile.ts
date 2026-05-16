@@ -1,7 +1,11 @@
 import * as THREE from 'three'
-import type { Unit } from './Unit'
 
 const SPEED = 450  // units per second
+
+// Anything trackable as a projectile target must expose these. Keeping this as
+// a structural type avoids importing Unit/SpriteUnit (which would couple the
+// projectile to the body classes and risk circular imports).
+type Trackable = { readonly worldX: number; readonly worldY: number; readonly isDead: boolean }
 
 export class Projectile {
   private mesh: THREE.Mesh
@@ -14,7 +18,7 @@ export class Projectile {
     private scene: THREE.Scene,
     startX: number,
     startY: number,
-    private targetUnit: Unit | null,
+    private targetUnit: Trackable | null,
     fixedTargetX: number,
     fixedTargetY: number,
     readonly damage: number,

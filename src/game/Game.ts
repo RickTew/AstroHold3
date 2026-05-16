@@ -3,7 +3,8 @@ import { Config, UnitType } from './GameConfig'
 import { Background } from '../scene/Background'
 import { PowerCore } from '../entities/PowerCore'
 import { SphereDefender, preloadSphereSprites } from '../entities/SphereDefender'
-import { Unit, getAllAnimClips } from '../entities/Unit'
+import { Unit } from '../entities/Unit'
+import { SpriteUnit, preloadSpriteUnit } from '../entities/SpriteUnit'
 import { HUD } from '../ui/HUD'
 import { AIPlayer } from '../ai/AIPlayer'
 import { BuildPhase } from './BuildPhase'
@@ -45,7 +46,9 @@ export class Game {
   private hud!: HUD
   private buildPhase: BuildPhase | null = null
   private battlePhase: BattlePhase | null = null
-  private attackerUnits: Unit[] = []
+  // Sprite attackers live alongside 3D Unit attackers; BattlePhase reads them
+  // through the shared structural shape (worldX/Y, range, isBomber, etc.).
+  private attackerUnits: Array<Unit | SpriteUnit> = []
 
   private attCredits = Config.START_CREDITS
   private attZoneMesh: THREE.LineSegments | null = null
@@ -57,11 +60,6 @@ export class Game {
 
   // Single source of truth for any active placement.
   private placement: PlacementSession | null = null
-
-  // Anim rotation test mode — each cyborg placed cycles through this list so
-  // the user can eyeball every clip in the merged animations.glb. Reset when
-  // a new battle starts (in enterBuildPhase).
-  private animTestIndex = 0
 
   // Camera pan/zoom state
   private isPanning = false
@@ -104,6 +102,8 @@ export class Game {
     await Promise.all([
       Unit.preload(),
       preloadSphereSprites(),
+      preloadSpriteUnit('cannon', 'cannon'),
+      preloadSpriteUnit('grenadier', 'grenadier'),
     ])
 
     this.hud.showGame()
@@ -152,7 +152,9 @@ private enterBuildPhase() {
 
     const units = this.attackerUnits.length > 0
       ? this.attackerUnits
-      : AIPlayer.buildArmy(Config.START_CREDITS).map(t => new Unit(this.scene, t, 420 + Math.random() * 100))
+      : AIPlayer.buildArmy(Config.START_CREDITS).map(t =>
+          this.makeAttacker(t, 420 + Math.random() * 100)
+        )
     this.attackerUnits = []
 
     this.phase = 'battle'
@@ -161,6 +163,16 @@ private enterBuildPhase() {
     this.battlePhase = new BattlePhase(this.scene, this.powerCore, units, structures, this.spheres)
     this.battlePhase.onWin  = () => { this.phase = 'win';  this.hud.setPhase('win') }
     this.battlePhase.onLose = () => { this.phase = 'lose'; this.hud.setPhase('lose') }
+  }
+
+  // Pick the right body for an attacker type. Pixel-sprite types (cannon,
+  // grenadier) instantiate SpriteUnit; legacy 3D types (scout/tank/bomber/
+  // drone) still use the GLB-based Unit class.
+  private makeAttacker(type: UnitType, x: number, y?: number): Unit | SpriteUnit {
+    if (type === 'cannon' || type === 'grenadier') {
+      return new SpriteUnit(this.scene, type, x, y)
+    }
+    return new Unit(this.scene, type, x, y)
   }
 
   // ── Placement (unified) ──────────────────────────────────────────────────
@@ -201,13 +213,7 @@ private enterBuildPhase() {
         if (this.attCredits < cost) return false
         this.attCredits -= cost
         this.hud.setAttCredits(this.attCredits)
-        // Rotation test mode: pass the next clip OBJECT as the idle override
-        // so each newly placed cyborg shows a different animation pose, and
-        // the label text is read directly off that object's .name.
-        const clips = getAllAnimClips()
-        const clip = clips[this.animTestIndex % clips.length]
-        this.animTestIndex++
-        this.attackerUnits.push(new Unit(this.scene, type, x, y, clip))
+        this.attackerUnits.push(this.makeAttacker(type, x, y))
         return false
       },
       onEnd: () => this.hud.setSelectedUnitType(null),

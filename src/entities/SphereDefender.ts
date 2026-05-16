@@ -113,7 +113,11 @@ export class SphereDefender {
 
   private buildHpBar(): { group: THREE.Group; fill: THREE.Mesh } {
     const group = new THREE.Group()
-    group.position.set(0, 55, 0)   // above the larger sphere sprite
+    // Sphere body fills rows 29..80 of the 108px sprite (~52px / 108 ≈ 48% of
+    // the 90 world-unit sprite = ~22 world units half-height). Local +30 sits
+    // just above the body with a small gap, and keeps the bar inside the
+    // fence even when the sphere is placed at the +Y edge of the defender zone.
+    group.position.set(0, 30, 0)
 
     const bg = new THREE.Mesh(
       new THREE.PlaneGeometry(30, 4),

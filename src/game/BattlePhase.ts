@@ -1,11 +1,16 @@
 import * as THREE from 'three'
 import { Config } from './GameConfig'
 import { Unit } from '../entities/Unit'
+import { SpriteUnit } from '../entities/SpriteUnit'
 import { Structure } from '../entities/Structure'
 import { Projectile } from '../entities/Projectile'
 import { Explosion } from '../entities/Explosion'
 import { PowerCore } from '../entities/PowerCore'
 import { SphereDefender } from '../entities/SphereDefender'
+
+// Either body type can be an attacker — both expose the same public surface
+// (worldX/Y, range, damage, isBomber, faceTarget, getMuzzlePoint, etc.).
+type Attacker = Unit | SpriteUnit
 
 const MINE_DETECT_RADIUS = 65
 
@@ -29,7 +34,7 @@ export class BattlePhase {
   constructor(
     private scene: THREE.Scene,
     private core: PowerCore,
-    private units: Unit[],
+    private units: Attacker[],
     private structures: Structure[],
     private spheres: SphereDefender[] = []
   ) {}
@@ -88,7 +93,7 @@ export class BattlePhase {
     if (this.core.isDead)   { this.over = true; this.onLose?.(); return }
   }
 
-  private doUnitTurn(unit: Unit) {
+  private doUnitTurn(unit: Attacker) {
     if (unit.isDead) return
 
     // Mine check before anything
@@ -107,6 +112,11 @@ export class BattlePhase {
         return
       }
     }
+
+    // Generic AoE flag — applies to any unit with aoeRadius > 0 (bomber and
+    // grenadier today). Bomber additionally kills itself on hit (kamikaze).
+    const aoe = Config.UNITS[unit.type].aoeRadius
+    const isAoe = aoe > 0
 
     // Engage the nearest sphere within attack range (if any)
     let nearestSphere: SphereDefender | null = null
@@ -149,21 +159,20 @@ export class BattlePhase {
       const proj = new Projectile(
         this.scene, muzzle.x, muzzle.y, null,
         target.worldX, target.worldY,
-        unit.damage, unit.isBomber, unit.isBomber ? Config.UNITS.bomber.aoeRadius : 0, 0xff3333
+        unit.damage, isAoe, aoe, 0xff3333
       )
-      if (unit.isBomber) {
+      if (isAoe) {
         const structs = this.structures
-        const aoe = Config.UNITS.bomber.aoeRadius
         proj.onHit = () => {
           target.takeDamage(unit.damage)
           for (const s of structs) {
-            if (!s.isDead) {
+            if (!s.isDead && s !== target) {
               const sdx = s.worldX - target.worldX
               const sdy = s.worldY - target.worldY
               if (Math.sqrt(sdx * sdx + sdy * sdy) < aoe) s.takeDamage(unit.damage * 0.5)
             }
           }
-          unit.kill()
+          if (unit.isBomber) unit.kill()
         }
       } else {
         proj.onHit = () => target.takeDamage(unit.damage)
@@ -186,22 +195,21 @@ export class BattlePhase {
       const unitY = muzzle.y
       const proj = new Projectile(
         this.scene, unitX, unitY, null, tx, ty,
-        unit.damage, unit.isBomber, unit.isBomber ? Config.UNITS.bomber.aoeRadius : 0, 0xff3333
+        unit.damage, isAoe, aoe, 0xff3333
       )
       const coreRef = this.core
-      if (unit.isBomber) {
+      if (isAoe) {
         const structs = this.structures
-        const aoe = Config.UNITS.bomber.aoeRadius
         proj.onHit = () => {
           coreRef.takeDamage(unit.damage)
           for (const s of structs) {
             if (!s.isDead) {
-              const sdx = s.worldX - unitX
-              const sdy = s.worldY - unitY
+              const sdx = s.worldX - tx
+              const sdy = s.worldY - ty
               if (Math.sqrt(sdx * sdx + sdy * sdy) < aoe) s.takeDamage(unit.damage * 0.4)
             }
           }
-          unit.kill()
+          if (unit.isBomber) unit.kill()
         }
       } else {
         proj.onHit = () => coreRef.takeDamage(unit.damage)
@@ -215,7 +223,7 @@ export class BattlePhase {
     }
   }
 
-  private checkMines(unit: Unit) {
+  private checkMines(unit: Attacker) {
     for (const s of this.structures) {
       if (s.type !== 'mine' || s.isDead) continue
       const dx = s.worldX - unit.worldX
@@ -236,8 +244,8 @@ export class BattlePhase {
     }
   }
 
-  private doSphereTurn(sphere: SphereDefender, aliveUnits: Unit[]) {
-    let nearest: Unit | null = null
+  private doSphereTurn(sphere: SphereDefender, aliveUnits: Attacker[]) {
+    let nearest: Attacker | null = null
     let nearestDist: number = sphere.range
     for (const u of aliveUnits) {
       const dx = u.worldX - sphere.worldX
@@ -256,10 +264,10 @@ export class BattlePhase {
     this.projectiles.push(proj)
   }
 
-  private doStructureTurn(structure: Structure, aliveUnits: Unit[]) {
+  private doStructureTurn(structure: Structure, aliveUnits: Attacker[]) {
     if (structure.isDead) return
 
-    let nearest: Unit | null = null
+    let nearest: Attacker | null = null
     let nearestDist: number = structure.range
 
     for (const u of aliveUnits) {
