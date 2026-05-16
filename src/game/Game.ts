@@ -190,6 +190,10 @@ private enterBuildPhase() {
   // ── Placement (unified) ──────────────────────────────────────────────────
 
   private startSpherePlacement() {
+    // Tear down any previous placement (cyborg ring etc.) so the old ghost
+    // doesn't orphan in the scene — bug previously left a stale colored ring
+    // behind when switching attacker types.
+    this.endPlacement()
     const ghost = this.makeGhostRing(0x44aaff, 16, 24)
     ghost.position.set(-400, 0, 1)
     this.scene.add(ghost)
@@ -209,6 +213,8 @@ private enterBuildPhase() {
   }
 
   private startCyborgPlacement(type: UnitType) {
+    // Tear down any previous placement so its ghost ring doesn't orphan.
+    this.endPlacement()
     const color = Config.UNITS[type].color
     const ghost = this.makeGhostRing(color, 12, 20)
     ghost.position.set(400, 0, 1)
