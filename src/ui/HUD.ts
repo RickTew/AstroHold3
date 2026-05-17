@@ -125,7 +125,7 @@ export class HUD {
     this.container.querySelectorAll('.shop-btn').forEach(b => b.classList.remove('selected'))
   }
 
-  setPhase(phase: 'build' | 'planning' | 'battle' | 'win' | 'lose') {
+  setPhase(phase: 'build' | 'planning' | 'reveal' | 'win' | 'lose') {
     switch (phase) {
       case 'build':
         this.phaseEl.textContent = 'BUILD PHASE'
@@ -140,11 +140,12 @@ export class HUD {
         this.planBarEl.classList.remove('hidden')
         this.messageEl.classList.add('hidden')
         break
-      case 'battle':
-        this.phaseEl.textContent = 'BATTLE PHASE'
+      case 'reveal':
+        this.phaseEl.textContent = 'BATTLE'
         this.bottomBarEl.classList.add('hidden')
         this.planBarEl.classList.add('hidden')
         this.planSelectionEl.classList.add('hidden')
+        this.messageEl.classList.add('hidden')
         break
       case 'win':
         this.phaseEl.textContent = 'BATTLE PHASE'

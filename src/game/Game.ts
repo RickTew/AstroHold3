@@ -5,12 +5,12 @@ import { PixelPowerCore, preloadPixelPowerCore } from '../entities/PixelPowerCor
 import { SphereDefender, preloadSphereSprites } from '../entities/SphereDefender'
 import { SpriteUnit, preloadSpriteUnit } from '../entities/SpriteUnit'
 import { HUD } from '../ui/HUD'
-import { AIPlayer } from '../ai/AIPlayer'
 import { BuildPhase } from './BuildPhase'
-import { BattlePhase } from './BattlePhase'
 import { PlanningPhase } from './PlanningPhase'
+import { RevealPhase } from './RevealPhase'
+import { Structure } from '../entities/Structure'
 
-type Phase = 'loading' | 'build' | 'planning' | 'battle' | 'win' | 'lose'
+type Phase = 'loading' | 'build' | 'planning' | 'reveal' | 'win' | 'lose'
 
 // Unified placement session — covers both cyborg and sphere placement.
 // Ghost mesh is the authoritative position; never re-raycast at click time.
@@ -45,10 +45,13 @@ export class Game {
   private powerCore!: PixelPowerCore
   private hud!: HUD
   private buildPhase: BuildPhase | null = null
-  private battlePhase: BattlePhase | null = null
   private planningPhase: PlanningPhase | null = null
+  private revealPhase: RevealPhase | null = null
   // All attackers are pixel sprites now (the 3D Meshy cyborg was retired).
   private attackerUnits: SpriteUnit[] = []
+  // Structures are owned by Game after the Build phase tears down — Planning
+  // and Reveal both read from this array across turns.
+  private structures: Structure[] = []
 
   private attCredits = Config.START_CREDITS
   private attZoneMesh: THREE.LineSegments | null = null
@@ -202,9 +205,7 @@ private enterBuildPhase() {
       this.startSpherePlacement()
     }
 
-    // Build phase's "BATTLE" button now opens the planning phase first. The
-    // actual reveal still happens in BattlePhase (phase 3 will swap that for
-    // the initiative-sorted reveal engine).
+    // Build's "READY" button opens the planning phase (first turn).
     this.hud.onBattle = () => this.enterPlanningPhase()
 
     this.hud.onSpawnUnit = (type) => {
@@ -222,79 +223,53 @@ private enterBuildPhase() {
     }
   }
 
-  private enterPlanningPhase() {
-    if (!this.buildPhase) return
-    this.endPlacement()
-    this.removeZoneTint('att')
-    this.removeZoneTint('def')
-
-    // Snapshot the structures + units from build phase. After this point the
-    // BuildPhase is gone; planning + battle work off these arrays.
-    const structures = this.buildPhase.getStructures()
-    this.buildPhase.cleanup()
-    this.buildPhase = null
-
-    const units = this.attackerUnits
+  // Called once from BUILD (initial = true) and then again after every reveal
+  // (initial = false) so the chess loop is BUILD → PLAN → REVEAL → PLAN ...
+  private enterPlanningPhase(initial = true) {
+    if (initial) {
+      if (!this.buildPhase) return
+      this.endPlacement()
+      this.removeZoneTint('att')
+      this.removeZoneTint('def')
+      this.structures = this.buildPhase.getStructures()
+      this.buildPhase.cleanup()
+      this.buildPhase = null
+    }
 
     this.phase = 'planning'
     this.hud.setPhase('planning')
 
     this.planningPhase = new PlanningPhase(
-      this.scene, this.spheres, units, structures, this.powerCore,
+      this.scene, this.spheres, this.attackerUnits, this.structures, this.powerCore,
     )
     this.planningPhase.onSelectionChange = info => this.hud.setPlanningSelection(info)
-
-    // From planning, the BATTLE button advances to the actual combat.
-    this.hud.onBattle = () => this.enterBattlePhase(units, structures)
+    this.hud.onBattle = () => this.enterRevealPhase()
   }
 
-  private enterBattlePhase(units?: SpriteUnit[], structures?: ReturnType<BuildPhase['getStructures']>) {
-    // Tear down planning UI + overlays if we came through it.
-    if (this.planningPhase) {
-      // Log queued plans so phase 2 can be verified without the reveal engine.
-      // Phase 3 will consume these for real.
-      const dump: Record<string, unknown>[] = []
-      for (const c of (units ?? this.attackerUnits))
-        if (c.queuedActions.length) dump.push({ id: c.id, type: c.type, actions: c.queuedActions })
-      for (const s of this.spheres)
-        if (s.queuedActions.length) dump.push({ id: s.id, kind: 'sphere', actions: s.queuedActions })
-      if (dump.length) console.log('[planning] queued plans →', dump)
+  private enterRevealPhase() {
+    if (!this.planningPhase) return
+    this.planningPhase.dispose()
+    this.planningPhase = null
+    this.hud.setPlanningSelection(null)
 
-      this.planningPhase.dispose()
-      this.planningPhase = null
-      this.hud.setPlanningSelection(null)
+    this.phase = 'reveal'
+    this.hud.setPhase('reveal')
+    this.hud.onBattle = null   // reveal can't be skipped via the button
+
+    this.revealPhase = new RevealPhase(
+      this.scene, this.powerCore, this.attackerUnits, this.structures, this.spheres,
+    )
+    this.revealPhase.onWin = () => {
+      this.phase = 'win'; this.hud.setPhase('win')
     }
-
-    // Fallback path: enterBattlePhase called without going through planning
-    // (no longer wired, but keep the safety net so direct calls don't crash).
-    if (!units || !structures) {
-      this.endPlacement()
-      this.removeZoneTint('att')
-      this.removeZoneTint('def')
-      if (this.buildPhase) {
-        structures = this.buildPhase.getStructures()
-        this.buildPhase.cleanup()
-        this.buildPhase = null
-      }
-      units = this.attackerUnits
+    this.revealPhase.onLose = () => {
+      this.phase = 'lose'; this.hud.setPhase('lose')
     }
-
-    // If no cyborgs placed (testing), auto-spawn an AI army so the battle has
-    // something to fight.
-    let battleUnits: SpriteUnit[] = units!
-    if (battleUnits.length === 0) {
-      battleUnits = AIPlayer.buildArmy(Config.START_CREDITS).map(t =>
-        new SpriteUnit(this.scene, t, 420 + Math.random() * 100)
-      )
+    this.revealPhase.onComplete = () => {
+      // Tear down reveal and open a fresh planning turn (only if game still on).
+      this.revealPhase = null
+      if (this.phase === 'reveal') this.enterPlanningPhase(false)
     }
-    this.attackerUnits = []
-
-    this.phase = 'battle'
-    this.hud.setPhase('battle')
-
-    this.battlePhase = new BattlePhase(this.scene, this.powerCore, battleUnits, structures!, this.spheres)
-    this.battlePhase.onWin  = () => { this.phase = 'win';  this.hud.setPhase('win') }
-    this.battlePhase.onLose = () => { this.phase = 'lose'; this.hud.setPhase('lose') }
   }
 
   // ── Placement (unified) ──────────────────────────────────────────────────
@@ -471,8 +446,8 @@ private makeGhostRing(color: number, inner: number, outer: number): THREE.Mesh {
     this.powerCore?.faceCamera(this.camera)
     this.spheres.forEach(s => { s.update(delta); s.faceCamera(this.camera) })
     this.buildPhase?.faceCamera(this.camera)
-    this.battlePhase?.update(delta)
-    this.battlePhase?.faceCamera(this.camera)
+    this.revealPhase?.update(delta)
+    this.revealPhase?.faceCamera(this.camera)
 
     // Smooth zoom with damping
     if (Math.abs(this.zoomVelocity) > 0.0002) {
