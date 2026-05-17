@@ -100,6 +100,8 @@ export class SphereDefender {
     const { group, fill } = this.buildHpBar()
     this.hpBarGroup = group
     this.hpBarFill = fill
+    // HP bar hidden — plan-then-watch model. See SpriteUnit for full reasoning.
+    this.hpBarGroup.visible = false
 
     scene.add(this.mesh)
   }

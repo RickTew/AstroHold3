@@ -248,13 +248,12 @@ export class SpriteUnit {
     const { group, fill } = this.buildHpBar()
     this.hpBarGroup = group
     this.hpBarFill = fill
-
-    if (this.type === 'doublegun') {
-      // Hide the bar; draw a ring around the sprite that empties as HP drops.
-      this.hpBarGroup.visible = false
-      this.hpRing = this.buildHpRing(1)
-      this.mesh.add(this.hpRing)
-    }
+    // Plan-then-watch model: HP overlays add clutter while the player is just
+    // watching the reveal play out. Hide them on every piece — death
+    // animations still communicate "this thing died." The bar mesh stays in
+    // place (and takeDamage still updates it) so flipping visible back on
+    // later is one line.
+    this.hpBarGroup.visible = false
 
     this.playState('idle')
 

@@ -98,6 +98,10 @@ export class PixelPowerCore {
     this.hpBar.position.z = 0.2
     this.hpBarGroup.add(this.hpBar)
     this.mesh.add(this.hpBarGroup)
+    // HP bar hidden — plan-then-watch model. Core death triggers the
+    // explosion animation + AoE blast, so the player still gets a clear
+    // "the core just blew" signal.
+    this.hpBarGroup.visible = false
 
     scene.add(this.mesh)
   }

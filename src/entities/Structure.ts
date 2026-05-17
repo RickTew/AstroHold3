@@ -173,7 +173,10 @@ export class Structure {
     fill.position.z = 0.2
     this.hpBarGroup.add(fill)
     this.mesh.add(this.hpBarGroup)
-    if (this.type === 'wall') this.hpBarGroup.visible = false
+    // HP bar hidden globally — plan-then-watch model. Wall already had its
+    // bar hidden because the wall body shrinks instead; that behaviour stays
+    // (it's a property of the wall sprite, not an overlay).
+    this.hpBarGroup.visible = false
     return fill
   }
 
