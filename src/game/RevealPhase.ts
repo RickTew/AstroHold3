@@ -3,7 +3,7 @@ import { Config } from './GameConfig'
 import { CellRef, QueuedAction, TargetRef } from './TurnTypes'
 import { SpriteUnit } from '../entities/SpriteUnit'
 import { SphereDefender } from '../entities/SphereDefender'
-import { Structure } from '../entities/Structure'
+import { Structure, getGrenadeTexture } from '../entities/Structure'
 import { PixelPowerCore } from '../entities/PixelPowerCore'
 import { Projectile } from '../entities/Projectile'
 import { Explosion } from '../entities/Explosion'
@@ -377,17 +377,24 @@ export class RevealPhase {
 
     const isAoe = action.kind === 'throw'
       || (actor instanceof SpriteUnit && Config.UNITS[actor.type].aoeRadius > 0)
-    const aoeRadius = isAoe
-      ? (actor instanceof SpriteUnit ? Config.UNITS[actor.type].aoeRadius : 0)
+      || (actor instanceof Structure && (Config.STRUCTURES[actor.type].aoeRadius ?? 0) > 0)
+    const aoeRadius = !isAoe ? 0
+      : actor instanceof SpriteUnit ? Config.UNITS[actor.type].aoeRadius
+      : actor instanceof Structure  ? (Config.STRUCTURES[actor.type].aoeRadius ?? 0)
       : 0
 
     const muzzle = this.actorMuzzle(actor, aim.x, aim.y)
     const damage = this.actorDamage(actor)
     const color = actor.side === 'defender' ? 0xffee00 : 0xff3333
+    // Bomber's projectile uses the Space_Grenade sprite (spinning bowling-
+    // ball) instead of the default colour-coded sphere mesh.
+    const spriteTex = actor instanceof Structure && actor.type === 'bomber'
+      ? getGrenadeTexture()
+      : null
 
     const proj = new Projectile(
       this.scene, muzzle.x, muzzle.y, null, aim.x, aim.y,
-      damage, isAoe, aoeRadius, color,
+      damage, isAoe, aoeRadius, color, spriteTex,
     )
 
     if (action.kind === 'fire' && !isAoe) {

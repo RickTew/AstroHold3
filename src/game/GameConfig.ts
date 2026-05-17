@@ -30,14 +30,19 @@ export const Config = {
     // Tower damage 15→25, range 200→250 — defenders were getting steamrolled
     // because their first shot didn't kill anything and cyborgs closed in
     // quickly. Stronger tower means each one actually threatens the wave.
-    turret:  { cost: 30, hp: 80,  damage: 25, range: 250, fireInterval: 2, apBudget: 1, label: 'Turret 30cr' },
-    cannon:  { cost: 60, hp: 120, damage: 40, range: 280, fireInterval: 4, apBudget: 1, label: 'Cannon 60cr' },
-    wall:    { cost: 20, hp: 300, damage: 0,  range: 0,   fireInterval: 0, apBudget: 0, label: 'Wall   20cr' },
-    mine:    { cost: 20, hp: 50,  damage: 60, range: 60,  fireInterval: 0, apBudget: 0, label: 'Mine   20cr' },
-    defense: { cost: 20, hp: 80,  damage: 0,  range: 0,   fireInterval: 0, apBudget: 0, label: 'Defense 20cr (preview)' },
-    gun:     { cost: 30, hp: 80,  damage: 15, range: 200, fireInterval: 2, apBudget: 1, label: 'Gun 30cr (preview)' },
-    laser:   { cost: 40, hp: 70,  damage: 25, range: 300, fireInterval: 3, apBudget: 1, label: 'Laser 40cr (preview)' },
-    signal:  { cost: 20, hp: 50,  damage: 0,  range: 0,   fireInterval: 0, apBudget: 0, label: 'Signal 20cr (preview)' },
+    turret:  { cost: 30, hp: 80,  damage: 25, range: 250, fireInterval: 2, apBudget: 1, aoeRadius: 0,  label: 'Turret 30cr' },
+    cannon:  { cost: 60, hp: 120, damage: 40, range: 280, fireInterval: 4, apBudget: 1, aoeRadius: 45, label: 'Cannon 60cr' },
+    // Bomber — long-range AoE turret. Lobs grenade-ball projectiles (the
+    // Space_Grenade sprite). Splash damage instead of single-target,
+    // longer reach than the regular Tower, paid for in cost + slower
+    // reload. apBudget 1 = one bomb per turn.
+    bomber:  { cost: 70, hp: 100, damage: 35, range: 350, fireInterval: 4, apBudget: 1, aoeRadius: 65, label: 'Bomber 70cr' },
+    wall:    { cost: 20, hp: 300, damage: 0,  range: 0,   fireInterval: 0, apBudget: 0, aoeRadius: 0,  label: 'Wall   20cr' },
+    mine:    { cost: 20, hp: 50,  damage: 60, range: 60,  fireInterval: 0, apBudget: 0, aoeRadius: 0,  label: 'Mine   20cr' },
+    defense: { cost: 20, hp: 80,  damage: 0,  range: 0,   fireInterval: 0, apBudget: 0, aoeRadius: 0, label: 'Defense 20cr (preview)' },
+    gun:     { cost: 30, hp: 80,  damage: 15, range: 200, fireInterval: 2, apBudget: 1, aoeRadius: 0, label: 'Gun 30cr (preview)' },
+    laser:   { cost: 40, hp: 70,  damage: 25, range: 300, fireInterval: 3, apBudget: 1, aoeRadius: 0, label: 'Laser 40cr (preview)' },
+    signal:  { cost: 20, hp: 50,  damage: 0,  range: 0,   fireInterval: 0, apBudget: 0, aoeRadius: 0, label: 'Signal 20cr (preview)' },
   },
 
   UNITS: {

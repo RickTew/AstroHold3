@@ -10,6 +10,7 @@ import { playExplosion } from '../audio/sfx'
 // 8-direction renders for.
 const STRUCTURE_SPRITE_FOLDERS: Partial<Record<StructureType, string>> = {
   turret:  'tower',    // Robot_Tower — single canonical tower (replaces tower1/tower2)
+  bomber:  'bomber',   // Robot_Bomber — AoE grenade-thrower
   defense: 'defense',  // geodesic dome (preview, no rotations)
   gun:     'gun',      // twin-barrel turret (preview)
   laser:   'laser',    // twin-laser turret (preview)
@@ -18,12 +19,14 @@ const STRUCTURE_SPRITE_FOLDERS: Partial<Record<StructureType, string>> = {
 // Structures that ship with a 4-frame explosion sequence (folder/explosion/).
 const STRUCTURE_HAS_EXPLOSION: Partial<Record<StructureType, true>> = {
   turret: true,
+  bomber: true,
 }
 // Per-type sprite size override. Default = 50 (one cell). Towers render
 // slightly bigger so they read as the dominant defender pieces; Gun preview
 // is smaller per user feedback (sprite was overflowing its cell).
 const STRUCTURE_SPRITE_SIZE: Partial<Record<StructureType, number>> = {
   turret: 64,
+  bomber: 60,
   gun:    40,
 }
 const SPRITE_SIZE = 50   // default — one cell
@@ -33,12 +36,18 @@ const SPRITE_SIZE = 50   // default — one cell
 // they stay south.
 const STRUCTURE_DEFAULT_DIR: Partial<Record<StructureType, string>> = {
   turret: 'east',
+  bomber: 'east',
 }
 const EXPLOSION_FRAME_COUNT = 4
 const EXPLOSION_FRAME_INTERVAL = 0.09
 
 const structureTextures: Map<StructureType, THREE.Texture> = new Map()
 const structureExplosionTextures: Map<StructureType, THREE.Texture[]> = new Map()
+
+// Space_Grenade texture — bomber projectile visual. Loaded alongside the
+// structure sprites so it's ready by the time the first reveal fires.
+let grenadeTexture: THREE.Texture | null = null
+export function getGrenadeTexture(): THREE.Texture | null { return grenadeTexture }
 
 function loadTex(url: string): Promise<THREE.Texture> {
   return new Promise((resolve, reject) => {
@@ -55,8 +64,8 @@ export async function preloadStructureSprites(): Promise<void> {
   // Use the south-facing rotation for every directional structure — stationary
   // pieces don't change facing yet. (Directional firing arcs will introduce
   // per-piece chosen rotation in a follow-up pass.)
-  await Promise.all(
-    (Object.keys(STRUCTURE_SPRITE_FOLDERS) as StructureType[]).map(async type => {
+  await Promise.all([
+    ...(Object.keys(STRUCTURE_SPRITE_FOLDERS) as StructureType[]).map(async type => {
       const folder = STRUCTURE_SPRITE_FOLDERS[type]!
       const dir = STRUCTURE_DEFAULT_DIR[type] ?? 'south'
       structureTextures.set(type, await loadTex(`/sprites/${folder}/${dir}.png`))
@@ -68,8 +77,9 @@ export async function preloadStructureSprites(): Promise<void> {
         }
         structureExplosionTextures.set(type, frames)
       }
-    })
-  )
+    }),
+    loadTex('/sprites/grenade.png').then(tex => { grenadeTexture = tex }),
+  ])
 }
 
 export class Structure {
@@ -123,6 +133,7 @@ export class Structure {
   private buildVisual(): THREE.Mesh {
     switch (this.type) {
       case 'turret':
+      case 'bomber':
       case 'defense':
       case 'gun':
       case 'laser':

@@ -38,6 +38,7 @@ export class HUD {
       <div id="top-robot-shop" class="shop-panel hidden">
         <button id="sphere-btn" class="shop-btn">Sphere 100cr</button>
         <button class="shop-btn" data-type="turret">Tower 30cr</button>
+        <button class="shop-btn" data-type="bomber">Bomber 70cr</button>
         <button class="shop-btn" data-type="wall">Wall 20cr</button>
         <button id="dog-btn" class="shop-btn">Dog 40cr</button>
         <button class="shop-btn preview" data-type="defense">Defense 20cr</button>
