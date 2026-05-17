@@ -1,13 +1,17 @@
 # AstroHold — Project Rules for Claude
 
-## Status: chess-like turn-based grid strategy (session 8-9 pivot)
-The game is **NOT an RTS** and **not real-time**. It's a chess-style turn-based
-strategy on a visible grid. Defenders (Robots, blue) place pieces in their
-zone; attackers (Cyborgs, red) place pieces in theirs; battle alternates sides
-turn-by-turn. **One piece per cell, strict.** Long-term plan and current
-balance numbers live in `docs/STATS.md` — that's the source of truth for
-stats, behaviors, and open design questions. Update STATS.md whenever stats
-or behaviors change.
+## Status: cinematic plan-then-play turn engine LIVE (session 10)
+Chess-like turn-based grid strategy. The full **plan-then-play** turn engine
+shipped this session — both sides queue all actions during a Planning phase,
+clicking BATTLE animates them one piece-action at a time sorted by Initiative
+(descending). After the first BATTLE click, reveals **auto-chain** until
+win/lose — the player just watches. "We are now watching the space battle take
+place" is the locked model.
+
+**One piece per cell, strict.** Large pieces (Power Core today) use a 2x2
+footprint per the size rule. Long-term plan and current balance numbers live
+in `docs/STATS.md` — source of truth for stats, behaviors, and open design
+questions. Update STATS.md whenever stats or behaviors change.
 
 ## Stack
 - Package manager: pnpm
@@ -25,10 +29,13 @@ cost was unwarranted.
 - Pixel sprite layout:
   `/public/sprites/<entity>/<dir>.png` (8 directional static rotations)
   `/public/sprites/<entity>/<state>/<dir>/frame_NNN.png` (animation frames)
-- Source PNG zips and other archives go in `/_zips/`.
-- GLBs are not used for gameplay; `super.glb`, `textured.glb`, `plain.glb`
-  remain under `/public/models/powercore/` only as future repurposable assets
-  (textured is earmarked as a defense-tower visual).
+  `/public/sprites/<entity>/explosion/frame_NNN.png` (flat death sequence
+  — Structure loader expects this layout, no direction subfolders)
+- Source PNG zips go in `/_zips/`.
+- Projectile-style single sprites (e.g. `grenade.png`) live at
+  `/public/sprites/<name>.png` and are loaded once into a shared cache.
+- GLBs are not loaded at runtime. The old `super.glb` etc. were removed
+  this session.
 
 ## Key constants
 - World: x [-600, +600], y [-200, +200] = 1200 × 400 world units
@@ -36,8 +43,14 @@ cost was unwarranted.
 - Defender zone: x < -200 (8 cols) — Robots place here
 - Attacker zone: x > 200 (8 cols) — Cyborgs spawn / place here
 - Battlefield: middle 8 cols, no placements
-- Power Core at (-550, 0). Pixel sprite, 200 world units tall.
-- Start credits: 1000 (testing budget; STATS.md lists production target)
+- Power Core at (-550, 0) — **2x2 footprint** (size rule), sprite size
+  `GRID_CELL * 3` = 150 world units. Centroid sits on a grid intersection,
+  4 underlying cells reserved.
+- Start credits: 1000 (testing budget)
+- **All piece costs in multiples of 10** so leftover credits remain
+  spendable by the cheapest piece (Wall 20cr / Grenadier 50cr).
+- `STATIONARY_INITIATIVE = 100` (from `TurnTypes.ts`). Defender structures
+  fire BEFORE any cyborg each turn.
 
 ## Camera
 - **Top-down** orthographic at (0, 0, 500) looking at origin. Grid cells
@@ -68,33 +81,72 @@ session 8 in DEVNOTES.
 
 ### Sprite anchoring (top-down)
 - `sprite.position.set(0, 0, 5)` — centered on the piece's `mesh.position`.
-  In top-down view, the cell center IS the piece's screen position. Old
-  feet-anchoring (`y = 0.35 × size`) is wrong for grid placement.
-- HP bar group above sprite, billboarded each frame via
-  `hpBarGroup.quaternion.copy(camera.quaternion)`.
+  In top-down view, the cell center IS the piece's screen position.
+- **HP bars are hidden globally** (`hpBarGroup.visible = false` set in each
+  piece's constructor). The bar meshes still exist + `takeDamage` still
+  updates them, so re-enabling for a future tactical-pause mode is a
+  one-line flip per class.
+- Wall is the lone exception: no HP bar, the wall body itself shrinks
+  from the top as it takes damage (structural feedback, not an overlay).
+
+### Default facing
+- Cyborgs (attacker) spawn facing **west** (toward the core).
+- Defender mobile units (Combat Dog) spawn facing **east** (toward
+  incoming cyborgs).
+- Structure default facing comes from `STRUCTURE_DEFAULT_DIR` in
+  `Structure.ts` — Tower + Bomber use `east.png` (planned mechanic: pay
+  per added direction). Preview pieces stay south since they only have
+  a single south.png.
 
 ## Architecture
-- `GameConfig.ts` — all constants and per-unit stats. Tweak numbers here
-  first; per-unit fields include `cost`, `hp`, `speed`, `damage`, `range`,
-  **`sightRange`** (new), `aoeRadius`, `label`, `color`.
-- `Game.ts` — scene, camera, renderer, state machine, unified
-  `PlacementSession`, grid snap (`snapToGridCell`), one-piece-per-cell
-  enforcement (`isCellOccupied`).
-- `BuildPhase.ts` — credit ledger; structures placement code (no shop UI yet).
-- `BattlePhase.ts` — current real-time-ish combat: units act in a tick,
-  defenders react. **Full turn system not yet implemented.** Contains:
-  `anyTargetInSight`, `wanderUnit`, `advanceToward`, `isCellOccupiedInBattle`,
-  `applyCoreBlast`.
-- `PixelPowerCore.ts` — gameplay core. 8 rotation PNGs + 9-frame explosion.
-- `SphereDefender.ts` — defender hero. 8 rotation PNGs cycled on a spin
-  timer (45 world-units across).
-- `SpriteUnit.ts` — every attacker. Per-state per-direction animation frames
-  with horizontal-mirror fallback for missing directions; `playAttackAnim()`
-  is called from BattlePhase before each projectile spawn.
-- `HUD.ts` — DOM overlay only, no Three.js. Exposes onBuySphere /
-  onSpawnUnit / onBattle / onSelectStructure callbacks.
+- `GameConfig.ts` — all constants + per-piece stats. Per-unit fields:
+  `cost`, `hp`, `speed`, `damage`, `range`, `sightRange`, `aoeRadius`,
+  `apBudget`, `label`, `color`. Structures also have `aoeRadius`.
+  Sphere config in `Config.SPHERE`.
+- `Game.ts` — scene, camera, renderer, state machine
+  (`'loading' | 'build' | 'planning' | 'reveal' | 'win' | 'lose'`),
+  unified `PlacementSession`, grid snap, cross-system `isCellOccupied`
+  (covers spheres + cyborgs + dogs + structures + core 2x2 cells),
+  defenderUnits + attackerUnits + structures arrays owned here.
+- `TurnTypes.ts` — `QueuedAction` union, `AP_COST` table,
+  `STATIONARY_INITIATIVE = 100`, `nextActorId()` factory.
+- `PlanningPhase.ts` — selection + queued-action overlays during PLAN.
+  Click piece → select, click cell → queue Move, Shift+click enemy →
+  queue Fire, right-click → clear/deselect. Manual planning of both
+  sides (no AI plan generator).
+- `RevealPhase.ts` — initiative-sorted sequencer. Collects queued
+  actions + auto-fire for structures + default fallback actions for
+  unplanned mobile units. Steps through at ~600ms per action with
+  strict-skip on invalid. Auto-loops via `Game.enterRevealPhase` until
+  win/lose (or stalemate). Exposes `totalSteps` so Game can detect
+  zero-action reveals and halt the loop.
+- `BuildPhase.ts` — credit ledger + structure placement. Takes a
+  cross-system occupancy callback from Game so structures respect
+  spheres / cyborgs / dogs / core cells.
+- `PixelPowerCore.ts` — gameplay core. 2x2 footprint via
+  `cellCenters()`. 8 rotation PNGs + 9-frame death explosion.
+- `SphereDefender.ts` — defender hero. 8 rotation PNGs + 4-frame death
+  explosion. Stationary.
+- `SpriteUnit.ts` — every mobile unit (cyborgs + Combat Dog).
+  Configurable `side` param ('attacker' | 'defender'). Per-state
+  per-direction animation frames with horizontal-mirror fallback.
+  `playAttackAnim()` triggers shoot/throw state before projectile spawn.
+- `Structure.ts` — tower / bomber / wall / mine / cannon / preview
+  pieces. Pixel sprite layout with per-type folder, size, default
+  direction, and explosion. `getGrenadeTexture()` exposes the shared
+  Space_Grenade sprite for the Bomber's projectile.
+- `Projectile.ts` — sphere mesh by default, optional `spriteTexture`
+  parameter turns it into a spinning `THREE.Sprite` (Bomber's grenade).
+- `HUD.ts` — DOM overlay. Shops split into `#top-robot-shop` (top-left)
+  and `#top-cyborg-shop` (top-right) so they never collide. Bottom bar
+  hosts just the READY/BATTLE button. `setCredits`/`setAttCredits`
+  toggle a `.insufficient` class on unaffordable buttons (greyed out +
+  not-allowed cursor).
 - `audio/sfx.ts` — synthesized gunshot + explosion. Lazy AudioContext,
   rate-limited (35ms / 60ms). No sample files.
+- `BattlePhase.ts` + `AIPlayer.ts` — **retired** this session. Files
+  remain on disk for reference but aren't imported. RevealPhase replaced
+  the tick loop.
 - HMR dispose is wired in `main.ts` + `Game.ts` — do not remove it.
 
 ## Placement flow (grid)
@@ -111,16 +163,20 @@ is the position authority — never re-raycast at click time.
    `placement.onPlace(x, y)`. The callback checks `isCellOccupied(x, y)`
    and returns false to reject (one piece per cell).
 
-## Battle movement
-- One cell per turn for every unit (speed stat ignored for now — AP system
-  will tier this).
-- `BattlePhase.advanceToward` picks the adjacent cell (of 8) closest to the
-  target that's not blocked by `isCellOccupiedInBattle`.
-- **CAMP vs ENGAGED:** before moving, `anyTargetInSight(unit)` checks
-  distance to spheres / structures / core against
-  `Config.UNITS[type].sightRange`. If nothing is in sight, 50% chance to
-  call `wanderUnit()` instead of advancing. If anything's in sight, always
-  advance every turn.
+## Battle movement (RevealPhase)
+- One cell per turn (Move action = 1 AP).
+- `RevealPhase.pickStepTowardPoint` picks the adjacent cell (of 8)
+  closest to the target that's not blocked by `isCellOccupiedAtBattle`
+  AND reduces distance to the target.
+- **Default action when no queued plan** (`defaultMobileUnitAction`):
+  - Fire if any enemy in attack range (range > 0).
+  - Else move toward nearest enemy in sight.
+  - **Fallback** if nothing's in sight: cyborgs march toward the core
+    anyway; defender mobile units (dogs) wander to a random adjacent cell
+    (per user spec — "robots wander when no target").
+- `isCellOccupiedAtBattle` checks BOTH current and `prevWorldX/Y` cells
+  for any walking unit so two pieces never visually share a tile during
+  transit.
 
 ## Sound
 - `playGunshot()` after every non-AoE projectile spawn (cyborg attacks,

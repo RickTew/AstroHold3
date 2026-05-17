@@ -578,3 +578,170 @@ Single source of truth for balance. Captures:
    strength (may be too strong against single targets), sight range numbers.
 7. **textured.glb defense tower** — earmarked asset on disk, ready to wire up
    as a fancy turret variant once the structure shop is in.
+
+---
+
+## Session 10 (2026-05-17) — Plan-then-play turn engine, cinematic mode, mobile defender, bomber
+
+Massive session. The chess turn system landed end-to-end (Phases 1-3),
+then iterated through balance/visual passes based on live testing, then
+added the first mobile defender (Combat Dog) and a long-range AoE
+defender (Robot Bomber with spinning grenade-ball projectile).
+
+### Direction decisions (locked this session)
+1. **Reveal model:** plan-then-play with **initiative-interleaved reveal**.
+   Both sides queue all actions during PLAN; clicking BATTLE animates them
+   one piece-action at a time sorted by initiative DESC. Per the user:
+   "watching the space battle take place" — cinematic payoff is core.
+2. **Continuous battle (session-late pivot):** the first BATTLE click runs
+   reveal-after-reveal automatically until win/lose. PLAN is only the
+   initial setup turn; subsequent reveals use default actions (cyborgs
+   advance toward core / dogs wander / spheres + towers auto-fire). Stops
+   if a reveal had zero possible actions so the loop can't spin forever.
+3. **Cinematic mode — HP bars hidden globally.** Plan-then-watch means the
+   player can't react mid-battle, so HP overlays add clutter. Bars stay
+   in code (one-line flip to bring back) but `hpBarGroup.visible = false`
+   on every piece. Wall is the exception — the wall body itself shrinks
+   from the top down as damage accumulates (structural, not an overlay).
+4. **Initiative source:** unit Speed verbatim; stationary defenders
+   (spheres + structures) use `STATIONARY_INITIATIVE = 100` so they fire
+   BEFORE cyborgs each turn (was 10 = fired last and felt useless).
+5. **Invalid-action handling:** strict-skip. If your queued target died
+   or your destination cell got taken before your action's tick, the
+   piece does nothing — wasted action. Mind-game tension > forgiveness.
+6. **Size rule:** small pieces = 1 cell footprint, large pieces = 4 cells
+   (2x2). Power Core is the first large piece — centroid sits on a grid
+   INTERSECTION, four underlying cells reserved.
+
+### Turn-engine architecture (new files)
+- `src/game/TurnTypes.ts` — `QueuedAction` union (move / fire / throw /
+  hold), `AP_COST` table, `STATIONARY_INITIATIVE`, `nextActorId()` factory.
+- `src/game/PlanningPhase.ts` — owns selection state + queued-action
+  overlays (blue move arrows + dot, red fire lines). Click a piece → select
+  → click destination cell to queue Move, Shift+click an enemy to queue
+  Fire, right-click clears the plan or deselects. Manual planning of both
+  sides per user spec ("you plan both sides manually" — no AI plan gen).
+- `src/game/RevealPhase.ts` — sequencer. Gathers every queued
+  (actor, action) pair plus auto-fire actions for turrets/cannons/bombers,
+  sorts by initiative DESC (defender-first tiebreak), steps through at
+  ~600ms per action. Each action's validity is re-checked at execution
+  time (strict skip). Generalized `defaultMobileUnitAction` works for
+  both cyborgs (fallback: march to core) and defender mobile units
+  (fallback: wander). Game loops reveals continuously until win/lose.
+
+### State machine (Game.ts)
+`'loading' | 'build' | 'planning' | 'reveal' | 'win' | 'lose'`
+- BUILD → click READY → PLANNING
+- PLANNING → click BATTLE → REVEAL
+- REVEAL onComplete → enterRevealPhase() again (clears prior queues so
+  defaults take over). Stops when a reveal had 0 steps (stalemate).
+- REVEAL onWin/onLose → 'win' / 'lose' phase, message overlay.
+
+### Per-piece data
+All combatants now have:
+- `id` (stable, prefix `cyborg_`/`robot_`/`sphere_`/`struct_`)
+- `apBudget` + `apRemaining` (planning UI deducts; reveal resets)
+- `queuedActions: QueuedAction[]`
+- `initiative` (= speed for mobile units, `STATIONARY_INITIATIVE` for
+  stationary pieces)
+- `side: 'attacker' | 'defender'` (configurable on SpriteUnit since
+  Combat Dog reuses the same class for defender side)
+
+### Asset additions
+- **Robot_Tower** — replaces tower1/tower2 placeholders. 8 rotations +
+  4-frame death explosion. Faces east by default. Sprite size 64.
+- **Robot_Sphere** — replaces old sphere. 8 rotations + 4-frame death
+  explosion that plays before the piece hides.
+- **Combat Dog** — first defender-side mobile UNIT. 8 static rotations +
+  8-direction walking (4 frames each) + death explosion (south-only
+  copied to every direction folder since the burst is omnidirectional).
+  Wired as `UnitType: 'dog'`, side='defender', placed in defender zone.
+- **Robot_Bomber** — long-range AoE defender structure. 8 rotations +
+  4-frame death explosion. Cost 70cr, range 350, damage 35, AoE 65.
+- **Space_Grenade** — the bowling-ball projectile sprite used by Bomber.
+  Loaded once via `getGrenadeTexture()`; Projectile becomes a
+  `THREE.Sprite` with `material.rotation` incrementing each tick so the
+  ball spins as it flies (top-down lob simulated via tumble, not Y arc).
+- **Preview pieces** (single south.png each): defense (geodesic dome),
+  gun (twin-barrel turret), laser (twin-laser), signal (satellite dish).
+  Placeable so the user can evaluate which to commission full 8-direction
+  renders for.
+
+### Balance pass
+- Sphere damage 10 → 25 (was being ignored — first shot killed nothing).
+- Tower damage 15 → 25, range 200 → 250.
+- Combat Dog gets a gun: range 0 → 150, damage 0 → 15 (sprite has a
+  mounted gun; treating it as melee felt wrong).
+- Grenadier cost 55 → 50 (round to multiples of 10 per user rule).
+- `STATIONARY_INITIATIVE` 10 → 100 so defenders fire FIRST each turn.
+
+### Menu redesign
+- Shops split into two top-corner panels (`#top-robot-shop` top-left,
+  `#top-cyborg-shop` top-right) so they never crash into each other.
+  Previously a single bottom bar would shove Double Gun off-screen,
+  making it unclickable.
+- Bottom bar now just hosts the READY/BATTLE button.
+- HUD `setCredits` / `setAttCredits` toggle a `.insufficient` class on
+  any shop button whose cost exceeds current credits (greyed out,
+  not-allowed cursor). No more silent placement failures.
+
+### Power Core
+- Now a 2x2 footprint (size rule) at sprite size `GRID_CELL * 3` (= 150)
+  so it visually dominates as the objective. `cellCenters()` returns
+  the 4 cells it occupies; all three placement systems (Game placement,
+  BuildPhase, BattlePhase / RevealPhase movement) respect them.
+- HP bar hidden like everything else; death animation + AoE blast +
+  game-over message communicate destruction.
+
+### Visual / UX fixes
+- Cross-system placement (sphere ↔ structure) — both systems now share
+  an injected occupancy callback so a sphere can't be placed under a
+  tower (or vice versa).
+- Mid-move occupancy — `prevWorldX/Y` tracked while walking; both source
+  and destination cells block other units so two pieces never visually
+  share a tile during transit.
+- Dead bodies auto-hide ~2s after the die animation finishes.
+- Core-blast explosion keeps fading after game-over (was freezing because
+  RevealPhase was waiting on projectiles but ignoring explosions — same
+  bug had to be fixed twice as the engine evolved).
+- Ground texture re-tuned: tighter palette + higher noise frequency +
+  smaller specks so it reads as gritty dirt instead of wet mud.
+- Grid lines `0x666666 @ 0.32` → `0xaabbcc @ 0.55` for legibility.
+
+### Grenadier west idle workaround
+Disk west idle PNGs hash-match the source zip byte-for-byte, but the
+exported west file content visually faces east (source-tool export bug).
+Workaround: drop 'west' from grenadier idle `presentDirs` so SpriteUnit's
+existing MIRROR fallback uses east frames + sets `sprite.scale.x = -1`.
+Targeted to idle only — other states might need the same trick.
+
+### Repo state at session end
+- Branch `main` at `2e84b35`, pushed to GitHub, deployed to production.
+- Build clean (`pnpm build`). Bundle: ~60 KB index + 526 KB Three.js.
+- Live: https://astrohold3.vercel.app
+- Old `BattlePhase.ts` and `AIPlayer.ts` remain on disk but are no longer
+  imported by Game.ts — reference only for the retired tick loop.
+
+### Suggested next-session opening moves
+1. **Cinematic grenade arc** — top-down Y-axis arc is hard to convey;
+   try scale-up-then-shrink mid-flight so the grenade appears to lift.
+   Combine with the existing spin for a believable lob.
+2. **Delayed grenade-fuse mechanic** — Bomber/Grenadier throws this turn,
+   grenade lands as a "pending" sprite on the target cell, explodes
+   next turn. Needs a new pending-entity system between reveals.
+3. **Directional firing arc upgrade** — Tower currently auto-fires
+   omni-directional. The spec is: each Tower spawns facing east; player
+   pays per additional fire-direction. Needs build-phase upgrade UI +
+   arc filter on auto-fire target selection.
+4. **Game restart** — after win/lose the message hangs forever. Add a
+   "Play Again" button that resets state and returns to BUILD.
+5. **Asset commissions** — pick winners from preview pieces (user liked
+   Gun + Defense dome) and request full 8-direction renders so they can
+   become real shop items.
+6. **Grenadier west walking + throw** — if those states also show
+   east-facing content, apply the same mirror workaround.
+7. **More cyborg / robot variety** — Sniper, Assassin, Berserker from the
+   STATS.md "Proposed future pieces" list. Each needs sprites + a
+   behavior tag (Sniper / Sneaky / Suicide rush).
+8. **Stalemate handling** — currently a reveal with 0 actions just halts
+   the loop silently. Could show a "no one can act" toast or auto-restart.

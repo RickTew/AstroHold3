@@ -22,36 +22,55 @@ lands.
 - Placement snaps to cell centers automatically. Cell centers are at
   (LEFT + col*50 + 25, BOTTOM + row*50 + 25) for col/row indices.
 
-## Turn flow — plan-then-play with initiative reveal (LOCKED)
+## Turn flow — plan-then-play, continuous reveal loop (LIVE)
 
-**Both players queue their whole turn during a Planning phase; clicking
-"Battle" runs the cinematic Reveal.** Players try to outguess each other,
-like poker or RPS with depth — the cinematic payoff is watching plans
-collide.
+**The cinematic model** — players make all decisions FIRST, then the
+game plays out. User framing: *"we are now watching the space battle
+take place."* Build → Plan once → click BATTLE → battles auto-chain
+until win/lose.
 
-1. **Plan.** For every piece they own, the player queues actions
-   (move / fire / throw / hold). Each action costs AP; AP is the only
-   budget on what a piece can do this turn.
-2. **Reveal.** The engine sorts every queued piece-action by **Initiative
-   (descending)** and animates them one at a time, regardless of which side
-   they belong to. So a fast cyborg might shoot before a slow defender
-   turret even responds.
-3. **Invalid actions strict-skip.** If your queued target died or your
-   destination cell got taken before your action's turn comes up, your
-   piece does *nothing* that step — a wasted action. No best-effort
-   re-target, no fallback move. Bad predictions are punished hardest;
-   this is the source of the mind-game tension.
-4. After the reveal, planning opens again.
+1. **Build.** Place pieces from credits (multiples of 10 — leftover
+   credits must always be spendable by the cheapest piece). Click READY
+   when done.
+2. **Plan (first turn only).** Queue actions for any of your pieces.
+   Click a piece, click a cell to queue Move, Shift+click an enemy to
+   queue Fire, right-click clears or deselects. Each action deducts AP
+   from the piece's budget.
+3. **Battle / Reveal.** The engine sorts every queued (actor, action)
+   pair by **Initiative (descending)** and animates them one at a time
+   (~600ms per step). Pieces from either side interleave by initiative.
+4. **Auto-loop.** When the reveal finishes, the next reveal starts
+   immediately. Queued actions clear so DEFAULT BEHAVIOUR takes over:
+   cyborgs march toward the core (fire if anything's in range), spheres
+   + towers auto-fire at the nearest cyborg, dogs hunt the nearest
+   cyborg / wander when nothing in sight.
+5. **Stalemate guard.** If a reveal completes with zero possible actions
+   (e.g. no cyborgs placed), the loop halts instead of spinning forever.
+6. **Win/lose** flips the phase and shows the message. No restart yet.
 
-**Initiative source:** uses each piece's existing `speed` value verbatim
-(higher speed = acts earlier). Stationary pieces (Sphere, structures, core)
-get a low fallback (**draft: 10**) — they fire late by default.
+**Invalid actions strict-skip.** If your queued target died or your
+destination cell got taken before your action's turn comes up, your
+piece does *nothing* that step. No best-effort re-target. Mind-game
+tension > forgiveness.
 
-**Structures during the reveal:** turrets and cannons **auto-fire on their
-initiative tick** at the closest enemy in range. Defender does not queue
-actions for them; only the Sphere and any future commandable defender
-pieces get queued actions. Walls / mines stay passive. Directional firing
-arcs are a follow-up pass (see [Open design questions](#open-design-questions)).
+**Initiative source:** each piece's `speed` value verbatim. Stationary
+pieces (Sphere, structures, core) use **`STATIONARY_INITIATIVE = 100`**
+(raised from 10 mid-session because defenders fired LAST and felt
+useless — now they fire BEFORE cyborgs each turn).
+
+**Structures during the reveal:** turrets / cannons / bombers auto-fire
+on their initiative tick at the closest enemy in range (or AoE splash
+for bomber + cannon). Walls / mines stay passive (apBudget 0). The
+defender doesn't queue actions for structures.
+
+**Pricing rule (locked):** All piece costs in multiples of 10 so leftover
+credits can always be spent down. Cheapest cyborg = Grenadier 50cr (was
+55 — rounded). Cheapest defender = Wall 20cr.
+
+**HP bars hidden globally** ("plan-then-watch model"). Wall is the
+exception — the wall body itself shrinks from the top as it takes damage.
+Code keeps the bar meshes in place but `visible = false`; one-line flip
+to bring them back if a mid-battle decision mode is added later.
 
 ### Action Points (proposed AP budgets)
 
@@ -90,36 +109,65 @@ Each piece spends Action Points (AP) per turn. Default actions:
 |---|---|
 | Cost | 100 |
 | HP | 300 |
-| Damage | 10 |
+| Damage | **25** (was 10 — buffed for defender balance) |
 | Attack range | 300 |
 | Sight range | 400 |
 | Speed | — (stationary) |
-| AP (live) | **3 shots/turn** |
-| Behavior | Defensive / stationary; fires the moment a target enters its attack range |
+| Initiative | **100** (stationary fallback; fires before any cyborg) |
+| AP | **3 shots/turn** |
+| Behavior | Defensive / stationary; queued or auto-fires nearest cyborg in range |
 
-**Special:** Spherical hero — fires in any direction, **turning costs 0 AP**.
-Live implementation: picks the **3 nearest distinct enemies** in attack range
-and fires one shot at each per turn. If fewer than 3 enemies are in range,
-fewer shots fire.
+**Special:** Spherical hero — fires in any direction. Auto-fire (no queued
+action) targets the single nearest cyborg in range; queue up to 3 fire
+actions for finer control. 4-frame death explosion on HP=0.
 
-### Structures (no shop yet — code exists, HUD button missing)
+### Combat Dog (defender mobile unit — NEW)
+| Stat | Value |
+|---|---|
+| Cost | 40 |
+| HP | 80 |
+| Speed | 90 (highest mobile speed in the game) |
+| Damage | 15 |
+| Attack range | 150 |
+| Sight range | 280 |
+| Initiative | 90 (= speed; goes before cyborgs but after stationary defenders) |
+| Behavior | Hunts nearest cyborg in sight; wanders if nothing visible |
 
-| Structure | Cost | HP | Damage | Range | Fire interval | AoE | Notes |
+Placed in the defender zone. First mobile defender — wires through the
+same SpriteUnit class as cyborgs, just `side='defender'` and faces east on
+placement. Has its own walking animation; death plays the 4-frame
+explosion (omnidirectional; same frames copied into every dir folder).
+
+### Structures (production)
+
+| Structure | Cost | HP | Damage | Range | AoE | apBudget | Sprite |
 |---|---|---|---|---|---|---|---|
-| Turret | 30 | 80 | 15 | 200 | 2 s | — | Single-target |
-| Cannon | 60 | 120 | 40 | 280 | 4 s | 45 | AoE around target cell |
-| Wall | 20 | 300 | 0 | 0 | — | — | Blocks line-of-sight & path |
-| Mine | 20 | 50 | 60 | 60 | — | 70 | Detonates when attacker enters detection radius |
+| Turret (Tower) | 30 | 80 | 25 | 250 | — | 1 | Robot_Tower (faces east) |
+| Bomber | 70 | 100 | 35 | 350 | 65 | 1 | Robot_Bomber (faces east; fires spinning Space_Grenade) |
+| Wall | 20 | 300 | 0 | 0 | — | 0 | Brown box that shrinks from the top as it takes damage (no HP bar; the body IS the HP indicator) |
+| Cannon | 60 | 120 | 40 | 280 | 45 | 1 | LEGACY — no shop button, type kept for compatibility |
+| Mine | 20 | 50 | 60 | 60 | 70 | 0 | Detonates when a cyborg moves on top |
 
-Once turn-based: structures are stationary defenders (no movement AP) but get
-1 fire action per turn.
+### Structures (preview pieces, dashed border in shop)
+Single south.png each (unknown.png from Meshy export). Placeable so the
+user can preview in-game and decide which to commission full 8-direction
+renders for.
+
+| Preview | Cost | HP | Damage | Range | Notes |
+|---|---|---|---|---|---|
+| Defense | 20 | 80 | 0 | 0 | Geodesic dome (user liked — possible Shield Generator) |
+| Gun | 30 | 80 | 15 | 200 | Twin-barrel turret (user liked) |
+| Laser | 40 | 70 | 25 | 300 | Twin-laser turret |
+| Signal | 20 | 50 | 0 | 0 | Satellite dish |
 
 ### Power Core (objective, not buyable)
 | Stat | Value |
 |---|---|
 | HP | 100 |
-| Radius | 18 |
-| Position | (-550, 0) |
+| Footprint | **2x2 cells** (size rule: small=1, large=4) |
+| Sprite size | GRID_CELL * 3 = 150 world units (visually dominates) |
+| Position | (-550, 0) — centroid sits on the grid intersection between cols 0/1 and rows 3/4 |
+| Death | 9-frame explosion + 180-unit AoE blast that wipes nearby cyborgs |
 
 Defender loses if Power Core HP reaches 0.
 
@@ -130,11 +178,12 @@ Defender loses if Power Core HP reaches 0.
 | Unit | Cost | HP | Speed | Damage | Atk range | Sight | AoE | AP | Behavior |
 |---|---|---|---|---|---|---|---|---|---|
 | **Cannon** | 70 | 180 | 55 | 35 | 240 | 320 | — | 3 | Aggressive — advance to attack range, hold, fire |
-| **Grenadier** | 55 | 110 | 75 | 28 | 220 | 280 | 65 | 3 | Standoff — keep distance, lob grenades over cover, fall back if pressed |
+| **Grenadier** | **50** | 110 | 75 | 28 | 220 | 280 | 65 | 3 | Standoff — keep distance, lob grenades. west idle uses MIRROR workaround (asset export bug) |
 | **Double Gun** | 90 | 160 | 65 | 45 | 230 | 300 | — | 3 | Aggressive — heavy direct fire from medium range |
 
 Cyborgs spawn in the attacker zone (x > 200) and need to traverse the
-battlefield to reach the Power Core at (-550, 0).
+battlefield to reach the Power Core at (-550, 0). All cyborg costs are
+multiples of 10 so leftover credits stay spendable.
 
 ---
 
