@@ -1,9 +1,12 @@
 import * as THREE from 'three'
 import { getGrenadeTexture } from './Structure'
 
-// A grenade that landed last turn and detonates at the start of the next reveal.
-// Visible sprite on the target cell + ominous pulse so the player can read
-// "this is about to blow." Held by Game across RevealPhase instances.
+// A live proximity-trigger grenade sitting on an empty cell. Lobbed by a
+// Bomber / Grenadier — the projectile lands here, the visual transitions to
+// this pulsing sprite, and the bomb stays in place until any enemy enters
+// the aoeRadius. Then it detonates (handled by RevealPhase). The owner ID
+// gates one-bomb-per-thrower: a Bomber/Grenadier can't throw a new bomb
+// while any PendingGrenade with their ownerId is still on the field.
 export class PendingGrenade {
   sprite: THREE.Sprite
   private pulseTime = 0
@@ -16,7 +19,8 @@ export class PendingGrenade {
     public damage: number,
     public aoeRadius: number,
     public side: 'attacker' | 'defender',
-    baseSize = 22,
+    public ownerId: string,
+    baseSize = 16,
   ) {
     this.baseSize = baseSize
     const tex = getGrenadeTexture()
@@ -37,7 +41,7 @@ export class PendingGrenade {
 
   update(delta: number) {
     this.pulseTime += delta
-    // 2 Hz pulse ±15% to signal pending detonation.
+    // ~2 Hz pulse ±15% to signal "armed and waiting".
     const k = 1 + 0.15 * Math.sin(this.pulseTime * Math.PI * 4)
     const s = this.baseSize * k
     this.sprite.scale.set(s, s, 1)

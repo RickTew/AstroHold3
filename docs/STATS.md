@@ -90,15 +90,19 @@ Each piece spends Action Points (AP) per turn. Default actions:
 - Grenadier grenades **arc over** intervening pieces and land at the target
   cell — they can be lobbed past walls and friendly units.
 
-**Lobbed AoE — delayed fuse (1 turn):**
-- Robot Bomber (defender) and cyborg Bomber / Grenadier all throw grenades
-  with a **1-turn fuse**. The grenade lands as a visible pulsing sprite on
-  the target cell at end of turn N, then detonates at the **start of turn
-  N+1** before any other action. Units standing on or near the cell take
-  the full AoE; units one cell away can plan a step out of the blast for
-  the next reveal.
+**Lobbed AoE — proximity bombs:**
+- Robot Bomber (defender) and cyborg Bomber / Grenadier throw **proximity
+  bombs**, not direct-fire blasts. The thrower lobs a grenade onto a target
+  **empty cell within range**. The grenade lands as a pulsing sprite on
+  that cell and stays there indefinitely until any **enemy** enters its
+  AoE radius — then it detonates immediately.
+- **One bomb per thrower at a time.** A Bomber / Grenadier can't throw a
+  new bomb while their previous one is still armed on the field. Once it
+  detonates, they're free to throw again.
+- Bombs are walkable (don't block movement). Friendly pieces can pass
+  through their own side's bombs harmlessly; only enemies trigger them.
 - Direct-fire AoE (Cannon turret, mines) still detonates instantly — only
-  thrown grenades use the delayed fuse.
+  thrown grenades use the proximity mechanic.
 
 **Firing arc:**
 - **All current pieces fire 8-directional** (N, NE, E, SE, S, SW, W, NW). The

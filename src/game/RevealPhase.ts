@@ -56,22 +56,6 @@ export class RevealPhase {
     private pendingGrenades: PendingGrenade[] = [],
   ) {
     this.steps = this.buildSteps()
-    this.detonatePendingGrenades()
-  }
-
-  // Resolve all grenades that landed last turn — first thing each reveal does.
-  // Spawns explosion VFX, applies side-aware AoE damage, plays sound, removes
-  // the pending entity. They visually overlap with step 1, which reads as
-  // "the round begins with explosions" — exactly the intended cinematic beat.
-  private detonatePendingGrenades() {
-    if (this.pendingGrenades.length === 0) return
-    for (const g of this.pendingGrenades) {
-      this.explosions.push(new Explosion(this.scene, g.worldX, g.worldY, g.aoeRadius, 0.5))
-      this.applyAoeForSide(g.worldX, g.worldY, g.aoeRadius, g.damage, g.side)
-      g.dispose()
-    }
-    playExplosion()
-    this.pendingGrenades.length = 0
   }
 
   // ── Step list ────────────────────────────────────────────────────────────
@@ -112,9 +96,19 @@ export class RevealPhase {
       }
     }
     // Structures auto-fire on their initiative tick. Walls/mines have
-    // apBudget 0 → skipped.
+    // apBudget 0 → skipped. The defender Bomber is special — it throws a
+    // proximity bomb at an empty cell, not direct-fire at a unit, and only
+    // if it doesn't already have a bomb on the field.
     for (const st of this.structures) {
       if (st.isDead || st.apBudget === 0) continue
+      if (st.type === 'bomber') {
+        // One bomb per defender Bomber at a time — skip if their previous
+        // bomb is still armed on the field.
+        if (this.hasActiveBomb(st.id)) continue
+        const cell = this.pickBombThrowCell(st)
+        if (cell) list.push({ actor: st, action: { kind: 'throw', cell } })
+        continue
+      }
       const target = this.pickNearestEnemyOf(st)
       if (!target) continue
       list.push({ actor: st, action: { kind: 'fire', target: { kind: 'unit', id: target.id } } })
@@ -139,8 +133,16 @@ export class RevealPhase {
   // cyborgs still advance toward the core (their objective) and defender
   // mobile units (dogs) wander to a random adjacent cell.
   private defaultMobileUnitAction(unit: SpriteUnit): QueuedAction | null {
+    // Lobbed AoE units (Bomber / Grenadier) throw proximity bombs onto empty
+    // cells, one bomb per thrower at a time. Special-cased here because the
+    // standard fire-at-nearest-enemy flow doesn't apply to area traps.
+    if (this.isLobbedThrower(unit)) {
+      const lobbed = this.lobbedThrowerAction(unit)
+      if (lobbed) return lobbed
+      // Fall through to move / advance if no throw is available right now.
+    }
     const range: number = Config.UNITS[unit.type].range
-    if (range > 0) {
+    if (range > 0 && !this.isLobbedThrower(unit)) {
       const fireTarget = this.nearestEnemy(unit, range)
       if (fireTarget) {
         return { kind: 'fire', target: { kind: fireTarget.kind, id: fireTarget.id } }
@@ -260,6 +262,97 @@ export class RevealPhase {
     return { kind: 'fire', target: { kind: 'unit', id: nearest.id } }
   }
 
+  // ── Lobbed-thrower (Bomber / Grenadier) helpers ────────────────────────
+
+  private isLobbedThrower(actor: Actor): boolean {
+    return (actor instanceof Structure && actor.type === 'bomber')
+      || (actor instanceof SpriteUnit && (actor.type === 'bomber' || actor.type === 'grenadier'))
+  }
+
+  private hasActiveBomb(ownerId: string): boolean {
+    return this.pendingGrenades.some(g => g.ownerId === ownerId)
+  }
+
+  // Auto-action for cyborg Bomber / Grenadier. If their bomb is still on the
+  // field, they hold (or shuffle closer to an enemy). Otherwise they pick the
+  // best empty cell within throw range and lob.
+  private lobbedThrowerAction(unit: SpriteUnit): QueuedAction | null {
+    if (this.hasActiveBomb(unit.id)) return null   // caller continues to move/advance fallback
+    const cell = this.pickBombThrowCell(unit)
+    if (cell) return { kind: 'throw', cell }
+    return null
+  }
+
+  // Pick the empty cell within thrower's range that's closest to the nearest
+  // enemy. Returns null if no enemy in throw + a-bit range, or no empty cell
+  // qualifies. Works for both SpriteUnit (cyborg) and Structure (defender
+  // bomber).
+  private pickBombThrowCell(actor: Actor): CellRef | null {
+    const range = this.actorRange(actor)
+    const ax = this.actorX(actor)
+    const ay = this.actorY(actor)
+    const enemy = this.nearestEnemyXY(actor, range + Config.GRID_CELL * 2)
+    if (!enemy) return null
+
+    const cs = Config.GRID_CELL
+    const ecol = Math.floor((enemy.x - Config.WORLD.LEFT) / cs)
+    const erow = Math.floor((enemy.y - Config.WORLD.BOTTOM) / cs)
+
+    let best: { col: number; row: number; score: number } | null = null
+    const SEARCH = 3
+    for (let dc = -SEARCH; dc <= SEARCH; dc++) {
+      for (let dr = -SEARCH; dr <= SEARCH; dr++) {
+        const col = ecol + dc
+        const row = erow + dr
+        const x = Config.WORLD.LEFT + col * cs + cs / 2
+        const y = Config.WORLD.BOTTOM + row * cs + cs / 2
+        if (x < Config.WORLD.LEFT || x > Config.WORLD.RIGHT) continue
+        if (y < Config.WORLD.BOTTOM || y > Config.WORLD.TOP) continue
+        if (Math.hypot(x - ax, y - ay) > range) continue
+        if (!this.isCellEmptyForBomb(x, y)) continue
+        const de = Math.hypot(x - enemy.x, y - enemy.y)
+        if (!best || de < best.score) best = { col, row, score: de }
+      }
+    }
+    return best ? { col: best.col, row: best.row } : null
+  }
+
+  // Side-aware enemy position lookup (no ID needed — we just need a point).
+  private nearestEnemyXY(actor: Actor, maxDist: number): { x: number; y: number } | null {
+    let best: { x: number; y: number; d: number } | null = null
+    const consider = (x: number, y: number) => {
+      const d = Math.hypot(x - this.actorX(actor), y - this.actorY(actor))
+      if (d <= maxDist && (!best || d < best.d)) best = { x, y, d }
+    }
+    if (actor.side === 'attacker') {
+      for (const s of this.spheres)        if (!s.isDead) consider(s.worldX, s.worldY)
+      for (const s of this.structures)     if (!s.isDead) consider(s.worldX, s.worldY)
+      for (const d of this.defenderUnits)  if (!d.isDead) consider(d.worldX, d.worldY)
+      if (!this.core.isDead) {
+        for (const cc of this.core.cellCenters()) consider(cc.x, cc.y)
+      }
+    } else {
+      for (const u of this.units) if (!u.isDead) consider(u.worldX, u.worldY)
+    }
+    return best
+  }
+
+  // A cell is bomb-eligible if no piece sits on it (units, structures,
+  // spheres, core sub-cells) AND no existing pending grenade is already
+  // there. Walls/mines count as occupants — bombs go on truly open ground.
+  private isCellEmptyForBomb(x: number, y: number): boolean {
+    const E = 1
+    const occupied = (px: number, py: number) =>
+      Math.abs(px - x) < E && Math.abs(py - y) < E
+    for (const u of this.units)        if (!u.isDead && occupied(u.worldX, u.worldY)) return false
+    for (const u of this.defenderUnits) if (!u.isDead && occupied(u.worldX, u.worldY)) return false
+    for (const s of this.spheres)       if (!s.isDead && occupied(s.worldX, s.worldY)) return false
+    for (const s of this.structures)    if (!s.isDead && occupied(s.worldX, s.worldY)) return false
+    for (const cc of this.core.cellCenters()) if (occupied(cc.x, cc.y)) return false
+    for (const g of this.pendingGrenades) if (occupied(g.worldX, g.worldY)) return false
+    return true
+  }
+
   private pickNearestEnemyOf(struct: Structure): SpriteUnit | null {
     let nearest: SpriteUnit | null = null
     let nearestDist: number = struct.range
@@ -280,7 +373,7 @@ export class RevealPhase {
     // running between steps and after the engine ends.
     this.tickProjectiles(delta)
     this.tickExplosions(delta)
-    for (const g of this.pendingGrenades) g.update(delta)
+    this.tickPendingGrenades(delta)
     for (const u of this.units) u.update(delta)
 
     if (this.done) return
@@ -346,6 +439,45 @@ export class RevealPhase {
       this.explosions[i].update(delta)
       if (this.explosions[i].isDone) this.explosions.splice(i, 1)
     }
+  }
+
+  // Proximity-fuse bombs: any enemy entering the aoeRadius detonates the
+  // bomb immediately. Side-aware — defender bombs only trigger on cyborgs,
+  // attacker bombs trigger on robots/dogs/core.
+  private tickPendingGrenades(delta: number) {
+    for (let i = this.pendingGrenades.length - 1; i >= 0; i--) {
+      const g = this.pendingGrenades[i]
+      g.update(delta)
+      if (this.over) continue
+      if (this.shouldDetonateGrenade(g)) {
+        this.explosions.push(new Explosion(this.scene, g.worldX, g.worldY, g.aoeRadius, 0.5))
+        this.applyAoeForSide(g.worldX, g.worldY, g.aoeRadius, g.damage, g.side)
+        playExplosion()
+        g.dispose()
+        this.pendingGrenades.splice(i, 1)
+      }
+    }
+  }
+
+  private shouldDetonateGrenade(g: PendingGrenade): boolean {
+    const r = g.aoeRadius
+    if (g.side === 'defender') {
+      for (const u of this.units) {
+        if (u.isDead) continue
+        if (Math.hypot(u.worldX - g.worldX, u.worldY - g.worldY) <= r) return true
+      }
+      return false
+    }
+    // Attacker bomb — trigger on any defender piece in range.
+    for (const s of this.spheres)        if (!s.isDead && Math.hypot(s.worldX - g.worldX, s.worldY - g.worldY) <= r) return true
+    for (const s of this.structures)     if (!s.isDead && Math.hypot(s.worldX - g.worldX, s.worldY - g.worldY) <= r) return true
+    for (const d of this.defenderUnits)  if (!d.isDead && Math.hypot(d.worldX - g.worldX, d.worldY - g.worldY) <= r) return true
+    if (!this.core.isDead) {
+      for (const cc of this.core.cellCenters()) {
+        if (Math.hypot(cc.x - g.worldX, cc.y - g.worldY) <= r) return true
+      }
+    }
+    return false
   }
 
   // ── Per-action execution ─────────────────────────────────────────────────
@@ -433,14 +565,16 @@ export class RevealPhase {
         proj.onHit = () => { if (!targetEntity.isDead) targetEntity.takeDamage(damage) }
       }
     } else if (isLobbed) {
-      // Delayed fuse — grenade lands as a pending entity, no damage / no
-      // explosion this turn. Next reveal's detonatePendingGrenades will
-      // resolve it.
+      // Proximity bomb — grenade lands silently, sits on the target cell as
+      // a pulsing trap, and detonates when any enemy steps into its aoe
+      // radius (see tickPendingGrenades). One bomb per thrower at a time —
+      // the lobbed-thrower auto-action enforces that gate.
       proj.silentLanding = true
       const side = actor.side
+      const ownerId = actor.id
       proj.onHit = () => {
         this.pendingGrenades.push(new PendingGrenade(
-          this.scene, aim.x, aim.y, damage, aoeRadius, side,
+          this.scene, aim.x, aim.y, damage, aoeRadius, side, ownerId,
         ))
       }
     } else {
