@@ -32,6 +32,12 @@ const STEP_DURATION = 0.6
 
 const MINE_DETECT_RADIUS = 65
 
+// Half-angle of a structure's fire arc, in radians. 60° each side = 120°
+// total wedge. East-facing defender towers cover everything between NE and
+// SE (the cyborg corridor). Future UI lets the player pay credits to add
+// extra facings to the structure's fireFacings array.
+const FIRE_ARC_HALF_RAD = (60 * Math.PI) / 180
+
 export class RevealPhase {
   private steps: PlannedStep[]
   private idx = 0
@@ -136,6 +142,13 @@ export class RevealPhase {
   // cyborgs still advance toward the core (their objective) and defender
   // mobile units (dogs) wander to a random adjacent cell.
   private defaultMobileUnitAction(unit: SpriteUnit): QueuedAction | null {
+    // Grenadier-specific: if an armed enemy bomb is adjacent (within 1.5
+    // cells), prefer DIFFUSING it over anything else. Costs 1 AP, no
+    // damage, bomb vanishes — strictly better than walking into the blast.
+    if (unit.type === 'grenadier') {
+      const adj = this.nearestArmedEnemyBombInRange(unit, Config.GRID_CELL * 1.5)
+      if (adj) return { kind: 'diffuse', target: { kind: 'bomb', id: adj.id } }
+    }
     // Lobbed AoE units (Bomber / Grenadier) throw proximity bombs onto empty
     // cells, one bomb per thrower at a time. Special-cased here because the
     // standard fire-at-nearest-enemy flow doesn't apply to area traps.
@@ -345,12 +358,31 @@ export class RevealPhase {
         if (x < Config.WORLD.LEFT || x > Config.WORLD.RIGHT) continue
         if (y < Config.WORLD.BOTTOM || y > Config.WORLD.TOP) continue
         if (Math.hypot(x - ax, y - ay) > range) continue
+        // Structures only throw within their fire arc — same constraint as
+        // direct-fire targeting. Mobile throwers (cyborg Bomber / Grenadier)
+        // can lob in any direction since they pivot to face their throw.
+        if (actor instanceof Structure && !this.targetInFireArc(actor, x - ax, y - ay)) continue
         if (!this.isCellEmptyForBomb(x, y)) continue
         const de = Math.hypot(x - enemy.x, y - enemy.y)
         if (!best || de < best.score) best = { col, row, score: de }
       }
     }
     return best ? { col: best.col, row: best.row } : null
+  }
+
+  // Closest armed enemy bomb within `maxDist` of the unit — used by Grenadier
+  // diffuse targeting. Returns the bomb regardless of AoE (diffuse is a melee
+  // safe-remove, the grenadier doesn't care about the radius).
+  private nearestArmedEnemyBombInRange(unit: SpriteUnit, maxDist: number): PendingGrenade | null {
+    let best: PendingGrenade | null = null
+    let bestD = maxDist
+    for (const g of this.pendingGrenades) {
+      if (!g.armed) continue
+      if (g.side === unit.side) continue
+      const d = Math.hypot(g.worldX - unit.worldX, g.worldY - unit.worldY)
+      if (d < bestD) { best = g; bestD = d }
+    }
+    return best
   }
 
   // Find the closest armed enemy bomb that's far enough that we're outside
@@ -414,9 +446,27 @@ export class RevealPhase {
       const dx = u.worldX - struct.worldX
       const dy = u.worldY - struct.worldY
       const d = Math.sqrt(dx * dx + dy * dy)
-      if (d <= nearestDist) { nearestDist = d; nearest = u }
+      if (d > nearestDist) continue
+      if (!this.targetInFireArc(struct, dx, dy)) continue
+      nearestDist = d; nearest = u
     }
     return nearest
+  }
+
+  // True if (dx, dy) points within any of `struct.fireFacings` ± half-arc.
+  // Used for direct-fire structures AND bomb-throw cell picking — both are
+  // constrained to the structure's facing wedge(s).
+  private targetInFireArc(struct: Structure, dx: number, dy: number): boolean {
+    if (dx === 0 && dy === 0) return true
+    const angle = Math.atan2(dy, dx)
+    for (const facing of struct.fireFacings) {
+      let delta = angle - facing
+      // Normalize to [-π, π].
+      while (delta > Math.PI)  delta -= Math.PI * 2
+      while (delta < -Math.PI) delta += Math.PI * 2
+      if (Math.abs(delta) <= FIRE_ARC_HALF_RAD) return true
+    }
+    return false
   }
 
   // ── Main tick ────────────────────────────────────────────────────────────
@@ -558,7 +608,32 @@ export class RevealPhase {
 
     if (action.kind === 'fire' || action.kind === 'throw') {
       this.executeAttack(actor, action)
+      return
     }
+
+    if (action.kind === 'diffuse') {
+      this.executeDiffuse(actor, action.target)
+    }
+  }
+
+  // Grenadier safe-remove of an armed enemy bomb. The bomb just vanishes —
+  // no damage, no explosion VFX, small white blip where it sat. Strict-skip
+  // if the bomb already detonated, the grenadier is no longer adjacent, or
+  // somehow non-grenadier code routed through here.
+  private executeDiffuse(actor: Actor, ref: TargetRef) {
+    if (!(actor instanceof SpriteUnit) || actor.type !== 'grenadier') return
+    if (ref.kind !== 'bomb') return
+    const bomb = this.pendingGrenades.find(g => g.id === ref.id)
+    if (!bomb || !bomb.armed) return
+    if (bomb.side === actor.side) return       // own side — refuse to "diffuse" friendly
+    const d = Math.hypot(bomb.worldX - actor.worldX, bomb.worldY - actor.worldY)
+    if (d > Config.GRID_CELL * 1.6) return     // too far now
+    // Quick non-explosive "puff" so the player sees the diffuse happen.
+    this.explosions.push(new Explosion(this.scene, bomb.worldX, bomb.worldY, 14, 0.25))
+    bomb.dispose()
+    const idx = this.pendingGrenades.indexOf(bomb)
+    if (idx >= 0) this.pendingGrenades.splice(idx, 1)
+    actor.faceTarget(bomb.worldX, bomb.worldY)
   }
 
   private executeMove(actor: Actor, cell: CellRef) {

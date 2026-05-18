@@ -111,8 +111,11 @@ Each piece spends Action Points (AP) per turn. Default actions:
   pickStepTowardPoint scores candidates by (distance + 2 × bomb damage in
   that cell) — any damage outweighs ~2 cell-lengths of distance, so units
   sidestep around primed bombs rather than walking into them.
-- Future: Grenadier-specific "diffuse" action (safe removal at melee
-  range) — not yet implemented.
+- **Grenadier diffuse:** if a Grenadier auto-AI step finds an armed enemy
+  bomb within 1.5 cells, they DIFFUSE it instead of moving/firing/throwing.
+  Diffuse costs 1 AP, applies no damage, and the bomb vanishes with a
+  small white puff. Only the Grenadier has this capability (it's their
+  thematic counter to enemy proximity traps).
 
 **Lobbed AoE — proximity bombs with 1-turn arming delay:**
 - Robot Bomber (defender) and cyborg Bomber / Grenadier throw **proximity
@@ -135,9 +138,16 @@ Each piece spends Action Points (AP) per turn. Default actions:
   thrown grenades use the proximity mechanic.
 
 **Firing arc:**
-- **All current pieces fire 8-directional** (N, NE, E, SE, S, SW, W, NW). The
-  PixelLab rotation sets give us all 8 angles natively — no asset cost to
-  support diagonal fire on every existing unit.
+- **Mobile units fire 8-directional.** They pivot to face their target, so
+  no angle is off-limits.
+- **Structures (Tower, Bomber, etc.) fire in a 120° wedge.** They ship with
+  a single facing (defender towers face east toward the cyborg corridor).
+  Targets outside the wedge are ignored — the structure won't shoot a
+  cyborg that flanks around to its rear. Bomb-throw cell picking obeys the
+  same wedge for structure bombers (mobile bombers/grenadiers can lob in
+  any direction since they pivot).
+- Future: pay-per-additional-facing UI lets the player widen a structure's
+  arc coverage during BUILD.
 - Reasons a future piece might be **cardinal-only** (4 directions): hardpoint-
   mounted turret, heavy servo motors too slow to traverse diagonally, sniper
   rifle that only fires straight lines, energy emitter with a fixed beam axis.

@@ -196,17 +196,42 @@ export class HUD {
         break
       case 'win':
         this.phaseEl.textContent = 'BATTLE PHASE'
-        this.messageEl.innerHTML = 'DEFENDER WINS<small>Power Core survived</small>'
-        this.messageEl.style.color = '#00ffaa'
-        this.messageEl.classList.remove('hidden')
+        this.showEndMessage('DEFENDER WINS', 'Power Core survived', '#00ffaa')
         break
       case 'lose':
         this.phaseEl.textContent = 'BATTLE PHASE'
-        this.messageEl.innerHTML = 'ATTACKER WINS<small>Power Core destroyed</small>'
-        this.messageEl.style.color = '#ff4444'
-        this.messageEl.classList.remove('hidden')
+        this.showEndMessage('ATTACKER WINS', 'Power Core destroyed', '#ff4444')
         break
     }
+  }
+
+  // Win/lose overlay with a Play Again button. Reload-based reset — simplest
+  // reliable path, avoids the partial-state landmines a hand-rolled reset
+  // would hit (pending grenades, animation frames mid-clip, audio context).
+  private showEndMessage(headline: string, subtitle: string, color: string) {
+    this.messageEl.innerHTML = `
+      ${headline}
+      <small>${subtitle}</small>
+      <button id="play-again-btn">Play Again</button>
+    `
+    this.messageEl.style.color = color
+    this.messageEl.classList.remove('hidden')
+    this.messageEl.querySelector('#play-again-btn')?.addEventListener('click', () => {
+      window.location.reload()
+    })
+  }
+
+  // Shown when a reveal completes with 0 planned actions — no piece on
+  // either side can act (out of ammo, no targets in sight, no movement
+  // options). Same Play Again affordance as win/lose so the player isn't
+  // stuck staring at a frozen board.
+  showStalemate() {
+    this.showEndMessage('STALEMATE', 'No piece can act — start a new round?', '#ffcc44')
+  }
+
+  hideMessage() {
+    this.messageEl.classList.add('hidden')
+    this.messageEl.innerHTML = ''
   }
 
   setPlanningSelection(info: PlanningSelectionInfo | null) {

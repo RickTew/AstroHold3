@@ -102,6 +102,12 @@ export class Structure {
   // stops auto-firing (it just sits there). Walls / Defense / Signal have
   // ammo 0 since they don't shoot.
   ammoRemaining: number
+  // Fire-arc facings (math angles, 0=east, π/2=north, π=west, 3π/2=south).
+  // Defender towers ship facing EAST (toward incoming cyborgs); RevealPhase
+  // only auto-fires at targets that fall within ±FIRE_ARC_HALF of any
+  // direction in this array. UI to pay-per-extra-direction is a follow-up;
+  // for now every firing structure has exactly one facing.
+  fireFacings: number[] = [0]
   queuedActions: QueuedAction[] = []
   get side(): 'defender' { return 'defender' }
 

@@ -304,9 +304,10 @@ private enterBuildPhase() {
       for (const g of this.pendingGrenades) g.arm()
       if (this.phase !== 'reveal') return   // game ended mid-reveal
       if (!hadActions) {
-        // Stalemate — no piece could act this turn (e.g. no cyborgs placed).
-        // Stop the auto-loop instead of spinning forever; let the player see
-        // the board and decide what to do.
+        // Stalemate — no piece could act this turn (no cyborgs left,
+        // everyone out of ammo, or no in-sight targets + no legal moves).
+        // Stop the auto-loop and surface a Play Again affordance.
+        this.hud.showStalemate()
         return
       }
       // Clear queued plans so the next auto-reveal uses default actions

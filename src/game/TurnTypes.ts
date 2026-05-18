@@ -6,18 +6,20 @@ export type CellRef = { col: number; row: number }
 export type TargetKind = 'unit' | 'sphere' | 'structure' | 'core' | 'bomb'
 export type TargetRef = { kind: TargetKind; id: string }
 
-export type QueuedActionKind = 'move' | 'fire' | 'throw' | 'hold'
+export type QueuedActionKind = 'move' | 'fire' | 'throw' | 'diffuse' | 'hold'
 
 export type QueuedAction =
-  | { kind: 'move';  cell: CellRef }
-  | { kind: 'fire';  target: TargetRef }
-  | { kind: 'throw'; cell: CellRef }
+  | { kind: 'move';    cell: CellRef }
+  | { kind: 'fire';    target: TargetRef }
+  | { kind: 'throw';   cell: CellRef }
+  | { kind: 'diffuse'; target: TargetRef }   // Grenadier safe-removes an armed enemy bomb
   | { kind: 'hold' }
 
 export const AP_COST: Record<QueuedActionKind, number> = {
   move: 1,
   fire: 1,
   throw: 2,
+  diffuse: 1,
   hold: 0,
 }
 
