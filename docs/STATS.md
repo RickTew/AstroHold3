@@ -90,12 +90,18 @@ Each piece spends Action Points (AP) per turn. Default actions:
 - Grenadier grenades **arc over** intervening pieces and land at the target
   cell — they can be lobbed past walls and friendly units.
 
-**Lobbed AoE — proximity bombs:**
+**Lobbed AoE — proximity bombs with 1-turn arming delay:**
 - Robot Bomber (defender) and cyborg Bomber / Grenadier throw **proximity
   bombs**, not direct-fire blasts. The thrower lobs a grenade onto a target
   **empty cell within range**. The grenade lands as a pulsing sprite on
-  that cell and stays there indefinitely until any **enemy** enters its
-  AoE radius — then it detonates immediately.
+  that cell.
+- **Arming delay:** the grenade lands UNARMED (yellow tint, slow pulse) and
+  cannot trigger during the turn it lands. At the END of that reveal it
+  arms (white tint, fast pulse). From the next turn onward, any enemy
+  entering its AoE radius detonates it immediately.
+- The arming delay is the strategic window — opponents see the yellow
+  marker on their next planning turn and can route around / diffuse /
+  shoot the bomb before it arms.
 - **One bomb per thrower at a time.** A Bomber / Grenadier can't throw a
   new bomb while their previous one is still armed on the field. Once it
   detonates, they're free to throw again.
@@ -157,7 +163,7 @@ explosion (omnidirectional; same frames copied into every dir folder).
 | Structure | Cost | HP | Damage | Range | AoE | apBudget | Sprite |
 |---|---|---|---|---|---|---|---|
 | Turret (Tower) | 30 | 80 | 25 | 250 | — | 1 | Robot_Tower (faces east) |
-| Bomber | 70 | 100 | 35 | 350 | 65 | 1 | Robot_Bomber (faces east; fires spinning Space_Grenade) |
+| Bomber | 70 | 100 | 20 | 200 | 50 | 1 | Robot_Bomber (faces east; fires spinning Space_Grenade). Range 350→200, damage 35→20, AoE 65→50 to prevent map-wide auto-wipes. |
 | Wall | 20 | 300 | 0 | 0 | — | 0 | Brown box that shrinks from the top as it takes damage (no HP bar; the body IS the HP indicator) |
 | Cannon | 60 | 120 | 40 | 280 | 45 | 1 | LEGACY — no shop button, type kept for compatibility |
 | Mine | 20 | 50 | 60 | 60 | 70 | 0 | Detonates when a cyborg moves on top |
@@ -192,7 +198,7 @@ Defender loses if Power Core HP reaches 0.
 | Unit | Cost | HP | Speed | Damage | Atk range | Sight | AoE | AP | Behavior |
 |---|---|---|---|---|---|---|---|---|---|
 | **Cannon** | 70 | 180 | 55 | 35 | 240 | 320 | — | 3 | Aggressive — advance to attack range, hold, fire |
-| **Grenadier** | **50** | 110 | 75 | 28 | 220 | 280 | 65 | 3 | Standoff — keep distance, lob grenades. west idle uses MIRROR workaround (asset export bug) |
+| **Grenadier** | **50** | 110 | 75 | 20 | 180 | 280 | 45 | 3 | Standoff — keep distance, lob proximity grenades. E/W idle uses static-rotation fallback (asset export bug). Stats nerfed for strategy parity. |
 | **Double Gun** | 90 | 160 | 65 | 45 | 230 | 300 | — | 3 | Aggressive — heavy direct fire from medium range |
 
 Cyborgs spawn in the attacker zone (x > 200) and need to traverse the

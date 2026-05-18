@@ -298,6 +298,10 @@ private enterBuildPhase() {
     this.revealPhase.onComplete = () => {
       const hadActions = (this.revealPhase?.totalSteps ?? 0) > 0
       this.revealPhase = null
+      // Arm every freshly-landed bomb so they're live proximity traps from
+      // the next reveal onward. The arming-delay window (this reveal) gives
+      // the opposing side a planning turn to flee / diffuse the threat.
+      for (const g of this.pendingGrenades) g.arm()
       if (this.phase !== 'reveal') return   // game ended mid-reveal
       if (!hadActions) {
         // Stalemate — no piece could act this turn (e.g. no cyborgs placed).

@@ -52,7 +52,9 @@ export class Projectile {
         alphaTest: 0.1,
       })
       const sprite = new THREE.Sprite(mat)
-      const size = isAoe ? 22 : 14
+      // Lobbed grenade — smaller in-flight base (was 22) so it sits inside
+      // its cell after the arc multiplier peaks.
+      const size = isAoe ? 16 : 12
       sprite.scale.set(size, size, 1)
       sprite.position.set(startX, startY, 1.5)
       sprite.renderOrder = 12
@@ -113,7 +115,9 @@ export class Projectile {
         const dys = this.visual.position.y - this.arcStartY
         const traveled = Math.sqrt(dxs * dxs + dys * dys)
         const t = Math.min(1, traveled / this.arcTotalDist)
-        const k = 1 + 0.7 * Math.sin(Math.PI * t)
+        // Lower arc factor (was 0.7) — the grenade still visibly lifts but
+        // no longer balloons past the cell boundary at apex.
+        const k = 1 + 0.35 * Math.sin(Math.PI * t)
         const s = this.arcBaseSize * k
         this.visual.scale.set(s, s, 1)
       }

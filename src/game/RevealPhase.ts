@@ -449,6 +449,9 @@ export class RevealPhase {
       const g = this.pendingGrenades[i]
       g.update(delta)
       if (this.over) continue
+      // Unarmed bombs ignore proximity — they're in the 1-turn fuse window
+      // that gives enemies a chance to plan around them.
+      if (!g.armed) continue
       if (this.shouldDetonateGrenade(g)) {
         this.explosions.push(new Explosion(this.scene, g.worldX, g.worldY, g.aoeRadius, 0.5))
         this.applyAoeForSide(g.worldX, g.worldY, g.aoeRadius, g.damage, g.side)

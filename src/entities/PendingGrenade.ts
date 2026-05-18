@@ -12,6 +12,11 @@ export class PendingGrenade {
   private pulseTime = 0
   private baseSize: number
 
+  // armed=false: bomb just landed, can't trigger this turn (gives enemies
+  // a planning window). RevealPhase.onComplete flips this to true at end
+  // of turn. armed=true: live proximity trigger.
+  armed = false
+
   constructor(
     scene: THREE.Scene,
     public worldX: number,
@@ -26,7 +31,9 @@ export class PendingGrenade {
     const tex = getGrenadeTexture()
     const mat = new THREE.SpriteMaterial({
       map: tex ?? null,
-      color: tex ? 0xffffff : 0xff5500,
+      // Yellow tint while unarmed, white when armed. Without a texture
+      // (preload race) fall back to orange so it's still visible.
+      color: tex ? 0xffe066 : 0xff5500,
       transparent: true,
       depthTest: false,
       depthWrite: false,
@@ -39,10 +46,19 @@ export class PendingGrenade {
     scene.add(this.sprite)
   }
 
+  arm() {
+    if (this.armed) return
+    this.armed = true
+    this.sprite.material.color.setHex(0xffffff)
+  }
+
   update(delta: number) {
     this.pulseTime += delta
-    // ~2 Hz pulse ±15% to signal "armed and waiting".
-    const k = 1 + 0.15 * Math.sin(this.pulseTime * Math.PI * 4)
+    // Unarmed: gentle pulse. Armed: faster, slightly stronger pulse to read
+    // as "live threat".
+    const freq = this.armed ? 6 : 3
+    const amp = this.armed ? 0.18 : 0.1
+    const k = 1 + amp * Math.sin(this.pulseTime * Math.PI * freq)
     const s = this.baseSize * k
     this.sprite.scale.set(s, s, 1)
   }
