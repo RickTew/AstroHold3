@@ -18,7 +18,7 @@ export const Config = {
   // Damage bumped 10→25 so the sphere actually deters cyborgs (was being
   // ignored because by the time it fired, multiple cyborgs had already
   // closed in for free).
-  SPHERE: { cost: 100, hp: 300, damage: 25, range: 300, sightRange: 400, apBudget: 3 },
+  SPHERE: { cost: 100, hp: 300, damage: 25, range: 300, sightRange: 400, apBudget: 3, ammo: 8 },
 
   // Per-piece Action Point budgets used by the plan-then-play turn system.
   // Walls/mines stay passive (apBudget 0 → reveal skips them). Turrets/cannons
@@ -30,37 +30,40 @@ export const Config = {
     // Tower damage 15→25, range 200→250 — defenders were getting steamrolled
     // because their first shot didn't kill anything and cyborgs closed in
     // quickly. Stronger tower means each one actually threatens the wave.
-    turret:  { cost: 30, hp: 80,  damage: 25, range: 250, fireInterval: 2, apBudget: 1, aoeRadius: 0,  label: 'Turret 30cr' },
-    cannon:  { cost: 60, hp: 120, damage: 40, range: 280, fireInterval: 4, apBudget: 1, aoeRadius: 45, label: 'Cannon 60cr' },
-    // Bomber — mid-range proximity-trap thrower. Range 200 (was 350 = whole
-    // map → cyborgs got wiped before they could engage). Damage 20 (was 35)
-    // and AoE 50 (was 65) so a bomb is a meaningful threat but not an
-    // instant team-wipe. Lob lands as a PendingGrenade trap — see
-    // STATS.md for the proximity / arming-delay rules.
-    bomber:  { cost: 70, hp: 100, damage: 20, range: 200, fireInterval: 4, apBudget: 1, aoeRadius: 50, label: 'Bomber 70cr' },
-    wall:    { cost: 20, hp: 300, damage: 0,  range: 0,   fireInterval: 0, apBudget: 0, aoeRadius: 0,  label: 'Wall   20cr' },
-    mine:    { cost: 20, hp: 50,  damage: 60, range: 60,  fireInterval: 0, apBudget: 0, aoeRadius: 0,  label: 'Mine   20cr' },
-    defense: { cost: 20, hp: 80,  damage: 0,  range: 0,   fireInterval: 0, apBudget: 0, aoeRadius: 0, label: 'Defense 20cr (preview)' },
-    gun:     { cost: 30, hp: 80,  damage: 15, range: 200, fireInterval: 2, apBudget: 1, aoeRadius: 0, label: 'Gun 30cr (preview)' },
-    laser:   { cost: 40, hp: 70,  damage: 25, range: 300, fireInterval: 3, apBudget: 1, aoeRadius: 0, label: 'Laser 40cr (preview)' },
-    signal:  { cost: 20, hp: 50,  damage: 0,  range: 0,   fireInterval: 0, apBudget: 0, aoeRadius: 0, label: 'Signal 20cr (preview)' },
+    // ammo = D&D-style shots-per-game. Once 0, the piece is inert (its
+    // weapon is spent). Drives strategic resource-allocation — towers can't
+    // hold the line forever, bombers can't carpet the map.
+    turret:  { cost: 30, hp: 80,  damage: 25, range: 250, fireInterval: 2, apBudget: 1, aoeRadius: 0,  ammo: 6, label: 'Turret 30cr' },
+    cannon:  { cost: 60, hp: 120, damage: 40, range: 280, fireInterval: 4, apBudget: 1, aoeRadius: 45, ammo: 4, label: 'Cannon 60cr' },
+    // Bomber — mid-range proximity-trap thrower. Ammo 3 = three bombs per
+    // game total. Combined with the one-bomb-on-field rule this means the
+    // defender Bomber is a deliberate placement choice, not a turret.
+    bomber:  { cost: 70, hp: 100, damage: 20, range: 200, fireInterval: 4, apBudget: 1, aoeRadius: 50, ammo: 3, label: 'Bomber 70cr' },
+    wall:    { cost: 20, hp: 300, damage: 0,  range: 0,   fireInterval: 0, apBudget: 0, aoeRadius: 0,  ammo: 0, label: 'Wall   20cr' },
+    mine:    { cost: 20, hp: 50,  damage: 60, range: 60,  fireInterval: 0, apBudget: 0, aoeRadius: 0,  ammo: 1, label: 'Mine   20cr' },
+    defense: { cost: 20, hp: 80,  damage: 0,  range: 0,   fireInterval: 0, apBudget: 0, aoeRadius: 0,  ammo: 0, label: 'Defense 20cr (preview)' },
+    gun:     { cost: 30, hp: 80,  damage: 15, range: 200, fireInterval: 2, apBudget: 1, aoeRadius: 0,  ammo: 5, label: 'Gun 30cr (preview)' },
+    laser:   { cost: 40, hp: 70,  damage: 25, range: 300, fireInterval: 3, apBudget: 1, aoeRadius: 0,  ammo: 5, label: 'Laser 40cr (preview)' },
+    signal:  { cost: 20, hp: 50,  damage: 0,  range: 0,   fireInterval: 0, apBudget: 0, aoeRadius: 0,  ammo: 0, label: 'Signal 20cr (preview)' },
   },
 
   UNITS: {
-    scout:     { cost: 20, hp: 120, speed: 130, damage: 10, range: 280, sightRange: 360, aoeRadius: 0,  apBudget: 3, label: 'Scout',     color: 0x4488ff },
-    tank:      { cost: 50, hp: 200, speed: 44,  damage: 25, range: 200, sightRange: 260, aoeRadius: 0,  apBudget: 3, label: 'Tank',      color: 0xff4444 },
-    bomber:    { cost: 60, hp: 80,  speed: 70,  damage: 25, range: 160, sightRange: 240, aoeRadius: 55, apBudget: 3, label: 'Bomber',    color: 0xff8800 },
-    drone:     { cost: 30, hp: 20,  speed: 160, damage: 8,  range: 350, sightRange: 420, aoeRadius: 0,  apBudget: 3, label: 'Drone',     color: 0x44ffff },
+    // ammo = D&D-style shots-per-game (see STRUCTURES comment above). When
+    // 0, the unit is inert and falls through to move-only or hold.
+    scout:     { cost: 20, hp: 120, speed: 130, damage: 10, range: 280, sightRange: 360, aoeRadius: 0,  apBudget: 3, ammo: 6, label: 'Scout',     color: 0x4488ff },
+    tank:      { cost: 50, hp: 200, speed: 44,  damage: 25, range: 200, sightRange: 260, aoeRadius: 0,  apBudget: 3, ammo: 5, label: 'Tank',      color: 0xff4444 },
+    bomber:    { cost: 60, hp: 80,  speed: 70,  damage: 25, range: 160, sightRange: 240, aoeRadius: 55, apBudget: 3, ammo: 3, label: 'Bomber',    color: 0xff8800 },
+    drone:     { cost: 30, hp: 20,  speed: 160, damage: 8,  range: 350, sightRange: 420, aoeRadius: 0,  apBudget: 3, ammo: 8, label: 'Drone',     color: 0x44ffff },
     // Hand-cannon cyborg — heavy direct-fire infantry, slower than scout, stronger hit.
-    cannon:    { cost: 70, hp: 180, speed: 55,  damage: 35, range: 240, sightRange: 320, aoeRadius: 0,  apBudget: 3, label: 'Cannon',    color: 0xffaa55 },
+    cannon:    { cost: 70, hp: 180, speed: 55,  damage: 35, range: 240, sightRange: 320, aoeRadius: 0,  apBudget: 3, ammo: 4, label: 'Cannon',    color: 0xffaa55 },
     // Grenadier — AoE thrower without kamikaze. Bomber-tier damage with smaller radius.
-    grenadier: { cost: 50, hp: 110, speed: 75,  damage: 20, range: 180, sightRange: 280, aoeRadius: 45, apBudget: 3, label: 'Grenadier', color: 0x88dd44 },
+    grenadier: { cost: 50, hp: 110, speed: 75,  damage: 20, range: 180, sightRange: 280, aoeRadius: 45, apBudget: 3, ammo: 3, label: 'Grenadier', color: 0x88dd44 },
     // Double Gun — dual hand-cannons, highest direct-fire damage, costlier and slightly squishier than Cannon.
-    doublegun: { cost: 90, hp: 160, speed: 65,  damage: 45, range: 230, sightRange: 300, aoeRadius: 0,  apBudget: 3, label: 'Double Gun',color: 0xff8866 },
+    doublegun: { cost: 90, hp: 160, speed: 65,  damage: 45, range: 230, sightRange: 300, aoeRadius: 0,  apBudget: 3, ammo: 5, label: 'Double Gun',color: 0xff8866 },
     // Combat Dog — DEFENDER mobile unit. Fast and now armed: the sprite
     // has a gun mounted on top so it should shoot. range 150 + damage 15
     // = short-medium harasser. Closes the gap to flank cyborgs then fires.
-    dog:       { cost: 40, hp: 80,  speed: 90,  damage: 15, range: 150, sightRange: 280, aoeRadius: 0,  apBudget: 3, label: 'Dog',        color: 0x4488aa },
+    dog:       { cost: 40, hp: 80,  speed: 90,  damage: 15, range: 150, sightRange: 280, aoeRadius: 0,  apBudget: 3, ammo: 5, label: 'Dog',        color: 0x4488aa },
   },
 } as const
 

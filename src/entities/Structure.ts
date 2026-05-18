@@ -98,6 +98,10 @@ export class Structure {
   readonly initiative = STATIONARY_INITIATIVE
   readonly apBudget: number
   apRemaining: number
+  // D&D-style total ammo budget for the whole game. Once 0, the structure
+  // stops auto-firing (it just sits there). Walls / Defense / Signal have
+  // ammo 0 since they don't shoot.
+  ammoRemaining: number
   queuedActions: QueuedAction[] = []
   get side(): 'defender' { return 'defender' }
 
@@ -123,6 +127,7 @@ export class Structure {
     this.hp = this.maxHp = Config.STRUCTURES[type].hp
     this.apBudget = Config.STRUCTURES[type].apBudget
     this.apRemaining = this.apBudget
+    this.ammoRemaining = Config.STRUCTURES[type].ammo
 
     this.mesh = new THREE.Group()
     this.mesh.position.set(this.worldX, this.worldY, 0)

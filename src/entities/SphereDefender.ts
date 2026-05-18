@@ -58,6 +58,9 @@ export class SphereDefender {
   readonly initiative = STATIONARY_INITIATIVE
   readonly apBudget = Config.SPHERE.apBudget
   apRemaining = this.apBudget
+  // D&D-style ammo budget for the whole game (not per turn). When 0 the
+  // sphere is inert (still alive, still a target, just can't shoot).
+  ammoRemaining: number = Config.SPHERE.ammo
   queuedActions: QueuedAction[] = []
   get side(): 'defender' { return 'defender' }
 

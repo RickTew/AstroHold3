@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { getGrenadeTexture } from './Structure'
+import { nextActorId } from '../game/TurnTypes'
 
 // A live proximity-trigger grenade sitting on an empty cell. Lobbed by a
 // Bomber / Grenadier — the projectile lands here, the visual transitions to
@@ -8,6 +9,7 @@ import { getGrenadeTexture } from './Structure'
 // gates one-bomb-per-thrower: a Bomber/Grenadier can't throw a new bomb
 // while any PendingGrenade with their ownerId is still on the field.
 export class PendingGrenade {
+  readonly id: string
   sprite: THREE.Sprite
   private pulseTime = 0
   private baseSize: number
@@ -27,6 +29,7 @@ export class PendingGrenade {
     public ownerId: string,
     baseSize = 16,
   ) {
+    this.id = nextActorId('bomb')
     this.baseSize = baseSize
     const tex = getGrenadeTexture()
     const mat = new THREE.SpriteMaterial({

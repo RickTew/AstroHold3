@@ -90,6 +90,30 @@ Each piece spends Action Points (AP) per turn. Default actions:
 - Grenadier grenades **arc over** intervening pieces and land at the target
   cell — they can be lobbed past walls and friendly units.
 
+**Ammo budgets (D&D-style, per game):**
+- Every piece that can attack has a per-game ammo pool, NOT a per-turn one.
+  Once spent, the piece is inert (still alive, still a target — just can't
+  fire). Forces strategic shot allocation rather than RTS spam.
+- Defender: Turret 6, Cannon 4, Bomber 3, Gun(preview) 5, Laser(preview) 5,
+  Sphere 8, Mine 1. Wall / Defense / Signal have 0 (they don't shoot).
+- Cyborg: Scout 6, Tank 5, Bomber 3, Drone 8, Cannon 4, Grenadier 3,
+  Double Gun 5. Dog (defender mobile) 5.
+- Tuning rule of thumb: ammo budget × damage should be comparable to that
+  piece's "fair share" of damage required to end the game, so a spent
+  piece feels like it did its part.
+
+**Bomb counterplay (reactive AI):**
+- Direct-fire units automatically check for armed ENEMY bombs in their
+  attack range. If any are far enough that the unit is outside the bomb's
+  own AoE (safe shot), they prefer firing at the bomb over firing at an
+  enemy unit. Detonating an enemy bomb early clears the lane.
+- Moving units flee armed-bomb AoE cells when picking their next step.
+  pickStepTowardPoint scores candidates by (distance + 2 × bomb damage in
+  that cell) — any damage outweighs ~2 cell-lengths of distance, so units
+  sidestep around primed bombs rather than walking into them.
+- Future: Grenadier-specific "diffuse" action (safe removal at melee
+  range) — not yet implemented.
+
 **Lobbed AoE — proximity bombs with 1-turn arming delay:**
 - Robot Bomber (defender) and cyborg Bomber / Grenadier throw **proximity
   bombs**, not direct-fire blasts. The thrower lobs a grenade onto a target

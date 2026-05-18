@@ -177,6 +177,11 @@ export class SpriteUnit {
   readonly apBudget: number
   apRemaining: number
   queuedActions: QueuedAction[] = []
+  // D&D-style ammo budget — number of shots/throws available for the
+  // ENTIRE game (not per turn). RevealPhase checks this before firing and
+  // decrements on each fired/thrown action. When 0, the unit is inert
+  // (still moves, but can't attack).
+  ammoRemaining: number
 
   private sprite: THREE.Sprite
   private hpBarGroup: THREE.Group
@@ -226,6 +231,7 @@ export class SpriteUnit {
     this.hp = this.maxHp = Config.UNITS[type].hp
     this.apBudget = Config.UNITS[type].apBudget
     this.apRemaining = this.apBudget
+    this.ammoRemaining = Config.UNITS[type].ammo
     this.moveSpeedPS = Config.UNITS[type].speed / Config.TURN_INTERVAL
     // Defenders look east toward the cyborg side; attackers look west toward
     // the core. Drives the initial sprite direction.

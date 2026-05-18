@@ -96,11 +96,14 @@ export class RevealPhase {
       }
     }
     // Structures auto-fire on their initiative tick. Walls/mines have
-    // apBudget 0 → skipped. The defender Bomber is special — it throws a
-    // proximity bomb at an empty cell, not direct-fire at a unit, and only
-    // if it doesn't already have a bomb on the field.
+    // apBudget 0 → skipped. Pieces out of ammo (ammoRemaining 0) are inert
+    // — they sit there and take damage without firing back. The defender
+    // Bomber is special — it throws a proximity bomb at an empty cell, not
+    // direct-fire at a unit, and only if it doesn't already have a bomb
+    // on the field.
     for (const st of this.structures) {
       if (st.isDead || st.apBudget === 0) continue
+      if (st.ammoRemaining <= 0) continue
       if (st.type === 'bomber') {
         // One bomb per defender Bomber at a time — skip if their previous
         // bomb is still armed on the field.
@@ -136,13 +139,22 @@ export class RevealPhase {
     // Lobbed AoE units (Bomber / Grenadier) throw proximity bombs onto empty
     // cells, one bomb per thrower at a time. Special-cased here because the
     // standard fire-at-nearest-enemy flow doesn't apply to area traps.
-    if (this.isLobbedThrower(unit)) {
+    // Ammo-gated: out-of-ammo throwers skip the throw branch and fall through
+    // to move/advance like inert units.
+    if (this.isLobbedThrower(unit) && unit.ammoRemaining > 0) {
       const lobbed = this.lobbedThrowerAction(unit)
       if (lobbed) return lobbed
       // Fall through to move / advance if no throw is available right now.
     }
     const range: number = Config.UNITS[unit.type].range
-    if (range > 0 && !this.isLobbedThrower(unit)) {
+    if (range > 0 && !this.isLobbedThrower(unit) && unit.ammoRemaining > 0) {
+      // Bomb counterplay: if there's an armed enemy bomb in range AND we're
+      // safely outside its AoE, shoot it instead of an enemy unit. Detonates
+      // the bomb harmlessly (from our perspective) — clears the field.
+      const bombShot = this.nearestSafeArmedBomb(unit, range)
+      if (bombShot) {
+        return { kind: 'fire', target: { kind: 'bomb', id: bombShot.id } }
+      }
       const fireTarget = this.nearestEnemy(unit, range)
       if (fireTarget) {
         return { kind: 'fire', target: { kind: fireTarget.kind, id: fireTarget.id } }
@@ -222,35 +234,59 @@ export class RevealPhase {
   }
 
   // Step one cell toward (tx, ty) — picks the adjacent cell that reduces
-  // distance the most and isn't occupied. Returns null if no valid step.
+  // distance the most and isn't occupied AND isn't sitting inside an armed
+  // enemy bomb's AoE. Returns null if no valid step. Reactive-AI flee:
+  // candidates are scored by (distance to target) + (danger from armed
+  // enemy bombs covering this cell). Bomb damage dominates pure distance
+  // so a unit will sidestep instead of walking through a primed AoE — but
+  // if every legal step is dangerous, it still picks the least-bad one.
   private pickStepTowardPoint(unit: SpriteUnit, tx: number, ty: number): CellRef | null {
     const cs = Config.GRID_CELL
     const curDist = Math.hypot(tx - unit.worldX, ty - unit.worldY)
-    type Cand = { col: number; row: number; x: number; y: number; d: number }
+    type Cand = { col: number; row: number; x: number; y: number; d: number; danger: number }
     const candidates: Cand[] = []
     for (let dx = -1; dx <= 1; dx++) {
       for (let dy = -1; dy <= 1; dy++) {
         if (dx === 0 && dy === 0) continue
         const x = unit.worldX + dx * cs
         const y = unit.worldY + dy * cs
+        if (x < Config.WORLD.LEFT || x > Config.WORLD.RIGHT) continue
+        if (y < Config.WORLD.BOTTOM || y > Config.WORLD.TOP) continue
         const col = Math.floor((x - Config.WORLD.LEFT) / cs)
         const row = Math.floor((y - Config.WORLD.BOTTOM) / cs)
-        candidates.push({ col, row, x, y, d: Math.hypot(tx - x, ty - y) })
+        const d = Math.hypot(tx - x, ty - y)
+        if (d >= curDist) continue   // must reduce distance
+        if (this.isCellOccupiedAtBattle(x, y, unit)) continue
+        candidates.push({ col, row, x, y, d, danger: this.cellBombDanger(x, y, unit.side) })
       }
     }
-    candidates.sort((a, b) => a.d - b.d)
-    for (const c of candidates) {
-      if (c.d >= curDist) continue
-      if (c.x < Config.WORLD.LEFT || c.x > Config.WORLD.RIGHT) continue
-      if (c.y < Config.WORLD.BOTTOM || c.y > Config.WORLD.TOP) continue
-      if (this.isCellOccupiedAtBattle(c.x, c.y, unit)) continue
-      return { col: c.col, row: c.row }
-    }
-    return null
+    if (candidates.length === 0) return null
+    // Score = distance + (danger weight). Weight tuned so any non-zero
+    // bomb damage outranks ~2 cell-lengths of distance — a unit will gladly
+    // sidestep one tile to dodge a primed grenade.
+    candidates.sort((a, b) => (a.d + a.danger * 2) - (b.d + b.danger * 2))
+    const c = candidates[0]
+    return { col: c.col, row: c.row }
   }
 
-  // Default sphere action: fire at nearest cyborg in range.
+  // How much armed enemy-bomb damage would a unit on `side` standing at
+  // (x, y) absorb if every armed bomb in range went off right now. Used by
+  // pickStepTowardPoint to flee primed AoE. Only ARMED bombs count —
+  // freshly-thrown unarmed grenades don't yet pose a threat.
+  private cellBombDanger(x: number, y: number, side: 'attacker' | 'defender'): number {
+    let total = 0
+    for (const g of this.pendingGrenades) {
+      if (!g.armed) continue
+      if (g.side === side) continue   // own side's bombs don't trigger on us
+      if (Math.hypot(g.worldX - x, g.worldY - y) <= g.aoeRadius) total += g.damage
+    }
+    return total
+  }
+
+  // Default sphere action: fire at nearest cyborg in range. Skipped if the
+  // sphere has burned through its ammo budget.
   private defaultSphereAction(sphere: SphereDefender): QueuedAction | null {
+    if (sphere.ammoRemaining <= 0) return null
     let nearest: SpriteUnit | null = null
     let nearestDist: number = sphere.range
     for (const u of this.units) {
@@ -315,6 +351,23 @@ export class RevealPhase {
       }
     }
     return best ? { col: best.col, row: best.row } : null
+  }
+
+  // Find the closest armed enemy bomb that's far enough that we're outside
+  // its AoE — shooting it would detonate it harmlessly. Returns null if no
+  // bomb is in range or every in-range bomb would catch us in its blast.
+  private nearestSafeArmedBomb(unit: SpriteUnit, attackRange: number): PendingGrenade | null {
+    let best: PendingGrenade | null = null
+    let bestD = attackRange
+    for (const g of this.pendingGrenades) {
+      if (!g.armed) continue
+      if (g.side === unit.side) continue       // not enemy
+      const d = Math.hypot(g.worldX - unit.worldX, g.worldY - unit.worldY)
+      if (d > attackRange) continue
+      if (d <= g.aoeRadius + 8) continue       // too close — we'd eat the blast
+      if (d < bestD) { best = g; bestD = d }
+    }
+    return best
   }
 
   // Side-aware enemy position lookup (no ID needed — we just need a point).
@@ -453,13 +506,20 @@ export class RevealPhase {
       // that gives enemies a chance to plan around them.
       if (!g.armed) continue
       if (this.shouldDetonateGrenade(g)) {
-        this.explosions.push(new Explosion(this.scene, g.worldX, g.worldY, g.aoeRadius, 0.5))
-        this.applyAoeForSide(g.worldX, g.worldY, g.aoeRadius, g.damage, g.side)
-        playExplosion()
-        g.dispose()
-        this.pendingGrenades.splice(i, 1)
+        this.detonatePendingGrenade(g)
       }
     }
+  }
+
+  // Apply a pending grenade's blast (explosion VFX + side-aware AoE + sound)
+  // and remove it from the field. Shared by proximity trigger + shoot-the-bomb.
+  private detonatePendingGrenade(g: PendingGrenade) {
+    this.explosions.push(new Explosion(this.scene, g.worldX, g.worldY, g.aoeRadius, 0.5))
+    this.applyAoeForSide(g.worldX, g.worldY, g.aoeRadius, g.damage, g.side)
+    playExplosion()
+    g.dispose()
+    const idx = this.pendingGrenades.indexOf(g)
+    if (idx >= 0) this.pendingGrenades.splice(idx, 1)
   }
 
   private shouldDetonateGrenade(g: PendingGrenade): boolean {
@@ -513,6 +573,10 @@ export class RevealPhase {
   }
 
   private executeAttack(actor: Actor, action: QueuedAction) {
+    // Out of ammo — strict skip. Catches both planned actions and the
+    // default-AI path that may have slipped through.
+    if (this.actorAmmo(actor) <= 0) return
+
     // Resolve target XY (specific entity for 'fire', cell center for 'throw').
     const aim = action.kind === 'fire'
       ? this.resolveTargetXY((action as { target: TargetRef }).target)
@@ -527,6 +591,9 @@ export class RevealPhase {
     const dist = Math.sqrt(dx * dx + dy * dy)
     const range = this.actorRange(actor)
     if (dist > range) return   // strict skip — out of range now
+
+    // The shot is going to fire — burn one round of ammo.
+    this.decrementActorAmmo(actor)
 
     // Cyborg attack animation; spheres/structures don't have shoot anims yet.
     if (actor instanceof SpriteUnit) {
@@ -560,12 +627,22 @@ export class RevealPhase {
     )
 
     if (action.kind === 'fire' && !isAoe) {
-      // Direct fire — resolve target entity NOW (at fire time) and damage on
-      // hit. If the target died before the projectile lands, no damage.
       const ref = (action as { target: TargetRef }).target
-      const targetEntity = this.resolveTargetEntity(ref)
-      if (targetEntity) {
-        proj.onHit = () => { if (!targetEntity.isDead) targetEntity.takeDamage(damage) }
+      if (ref.kind === 'bomb') {
+        // Shoot-the-bomb counterplay — the projectile is a hit-marker, the
+        // bomb supplies its own damage/AoE/side on detonation. Removes the
+        // pending grenade from the field cleanly.
+        const bomb = this.pendingGrenades.find(g => g.id === ref.id)
+        if (bomb && bomb.armed) {
+          proj.onHit = () => this.detonatePendingGrenade(bomb)
+        }
+      } else {
+        // Direct fire — resolve target entity NOW (at fire time) and damage on
+        // hit. If the target died before the projectile lands, no damage.
+        const targetEntity = this.resolveTargetEntity(ref)
+        if (targetEntity) {
+          proj.onHit = () => { if (!targetEntity.isDead) targetEntity.takeDamage(damage) }
+        }
       }
     } else if (isLobbed) {
       // Proximity bomb — grenade lands silently, sits on the target cell as
@@ -684,6 +761,10 @@ export class RevealPhase {
       if (this.core.isDead) return null
       return { x: this.core.mesh.position.x, y: this.core.mesh.position.y }
     }
+    if (ref.kind === 'bomb') {
+      const b = this.pendingGrenades.find(g => g.id === ref.id)
+      return b && b.armed ? { x: b.worldX, y: b.worldY } : null
+    }
     const all: Actor[] = [...this.units, ...this.defenderUnits, ...this.spheres, ...this.structures]
     const hit = all.find(p => p.id === ref.id)
     return hit && !hit.isDead ? { x: hit.worldX, y: hit.worldY } : null
@@ -732,6 +813,18 @@ export class RevealPhase {
 
   private actorX(a: AnyTarget): number { return a instanceof PixelPowerCore ? a.mesh.position.x : a.worldX }
   private actorY(a: AnyTarget): number { return a instanceof PixelPowerCore ? a.mesh.position.y : a.worldY }
+
+  private actorAmmo(actor: Actor): number {
+    if (actor instanceof SpriteUnit)     return actor.ammoRemaining
+    if (actor instanceof SphereDefender) return actor.ammoRemaining
+    return actor.ammoRemaining
+  }
+
+  private decrementActorAmmo(actor: Actor) {
+    if (actor instanceof SpriteUnit)     { actor.ammoRemaining = Math.max(0, actor.ammoRemaining - 1); return }
+    if (actor instanceof SphereDefender) { actor.ammoRemaining = Math.max(0, actor.ammoRemaining - 1); return }
+    actor.ammoRemaining = Math.max(0, actor.ammoRemaining - 1)
+  }
 
   private actorRange(actor: Actor): number {
     if (actor instanceof SpriteUnit)     return Config.UNITS[actor.type].range
