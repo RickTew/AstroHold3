@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(awk *)",
+      "Bash(shasum *)",
+      "mcp__claude_ai_Vercel__list_deployments",
+      "mcp__claude_ai_Vercel__get_deployment",
+      "mcp__claude_ai_Vercel__list_projects",
+      "mcp__claude_ai_Vercel__get_project"
+    ]
+  }
+}

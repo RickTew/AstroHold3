@@ -945,3 +945,220 @@ a 1-cell-forward 3-wide wedge).
    is too strong, drop HP first; if too weak, give him diagonal
    movement (he's the special-character carve-out from the
    no-diagonals rule).
+
+---
+
+## Session 12 (2026-05-19) — Slam, log, fire arcs, sniper, polish
+
+Big session. Six of session 11's eight "next-session opening moves"
+shipped, plus a new cyborg type (Sniper) added from a fresh PixelLab
+asset drop. Also pinned two durable feedback rules: **mouse-only UI
+(no keyboard commands)** and **finish tasks end-to-end** (don't keep
+asking the user to confirm direction mid-build).
+
+### Features shipped (commits in order)
+1. **Hulk slam-attack special** (`67c0d6d`) — `QueuedActionKind 'slam'`
+   with AP cost 2, separate `slamAmmo: 3` counter, 3-cell-wide wedge
+   one tile forward of facing. AI scores all four cardinal wedges
+   and slams the cluster with 2+ enemies (ties broken by total HP);
+   re-uses Hulk's PixelLab `throw` clip as the slam animation.
+2. **Combat history log** (`99df790`) — right-rail D&D-style turn
+   log. `RevealPhase.combatLog: CombatLogEntry[]` accumulates entries
+   per reveal; Game forwards them to a new `#combat-log` HUD panel.
+   Side-coloured rows (defender blue / attacker red / neutral gold);
+   "── Turn N ──" headers; trimmed to last ~220 lines; auto-scrolls.
+   Visible during BATTLE and persists through win/lose/stalemate.
+3. **Fire-arc preview during BUILD** (`57d3677`) — new
+   `FireArcPreview` overlay class. Wedge under directional structure
+   ghosts (turret/bomber/etc), full 360° circle under the sphere
+   ghost. Outline + filled disc, faint blue, low opacity.
+4. **Tower extra-facings UI** (`b0e2fac` → `1f0f290` → `059a914`
+   → `6432272` — iteratively fixed): compass-rose popup, paid extra
+   `Bash(Config.EXTRA_FACING_COST = 30cr)` per cardinal direction.
+   Right-click a placed firing structure to open; click outside
+   (anywhere) to close; explicit ✕ button + Refund button; right-
+   clicking the SAME structure toggles closed. The rose hides the
+   active placement + clears the shop selection so it's a focused
+   edit mode.
+5. **Cyborg Sniper** (`55bae70`) — new attacker type. 90cr / 80 HP /
+   speed 50 / damage 150 / range 400 (longest in game) / **ammo 1**
+   (single shot per game). One-shots every defender structure (max
+   HP 120 cannon turret). Asset coverage: 8 static rotations, 4
+   cardinal walking, 7-direction shoot composed from 3 Meshy clips
+   (E/W = crouches-with-rifle, N/NE/NW = back-aim, SE/SW = holding
+   rifle), 8-direction die. No idle (initially used the
+   `standing_still` clip — turned out to be a kneel-with-rifle pose
+   that read as "still aiming"; dropped and let static rotations
+   serve as the rest pose).
+6. **Sniper + Hulk size & rest tweaks** (`4268927`): Hulk sprite
+   bumped 60→84 via new `SPRITE_SIZE_OVERRIDE` table; per-type
+   override lets future bruisers opt in. Sniper idle dropped (see
+   above). Plus the bug fixes below.
+
+### Bug fixes (session-12 playtest)
+- **Compass-rose buy buttons closed without buying** (`4268927`). Root
+  cause: `Game.openCompassRose` set `editingStructure = s` BEFORE
+  calling `hud.showCompassRose`. Show's first line is an internal
+  `hideCompassRose()` cleanup which fires `onRoseClose`, which Game
+  wires to clear `editingStructure = null`. `tryBuyFacing` then saw
+  null and closed. Fix: gate `onRoseClose` to only fire when there
+  was actually an open rose (skips the no-op internal cleanup), and
+  set `editingStructure` AFTER `showCompassRose`.
+- **Rose got stuck open / outside-click didn't close** (`059a914`).
+  Cause: the previous close logic gated on `closest('#hud')`, so
+  clicks landing on other HUD elements (combat log, shop, credits)
+  never reached the close branch. Replaced with a document-level
+  mousedown listener installed at rose-open time; it closes the rose
+  on any click outside the rose's own DOM, regardless of where the
+  click lands. Doesn't consume the click — refund/place still runs
+  in the same gesture.
+- **"Refund tower" not surfaced** (`059a914`) — added Refund row in
+  the rose footer. Refunds the base cost; extra-facing spend is sunk
+  by design (a known compromise documented in STATS.md).
+- **Click-to-refund tower silently re-placed** (`6432272`). With a
+  structure type selected in the shop, clicking an existing structure
+  splices it on mousedown (Game.tryRefund) but then BuildPhase's own
+  click handler fires on the same gesture, sees the cell as empty,
+  and immediately places a replacement. To the player, the piece
+  "didn't remove". Fix: tryRefund clears the shop selection when it
+  removes a structure, so the trailing click event is a no-op.
+  Sphere/dog refund unaffected — they use a separate placement path.
+- **Right-click ghost lingered after opening rose** (`6432272`) —
+  `openCompassRose` now also `endPlacement()` + `selectStructure(null)`
+  + `clearStructureSelection()`. Rose is a focused edit mode.
+- **Cyborg gridlock stalemate** (`4268927`). When a cyborg had a
+  sighted enemy that was unreachable (walls in the way), the previous
+  default action returned null — every cyborg jammed → totalSteps 0
+  → stalemate even with units alive and ammo remaining. Fix: when
+  pickStepTowardPoint returns null for a sighted enemy, fall through
+  to the core-advance fallback (different target, may have a free
+  direction); if that's also blocked, wander-step. Formation can
+  unstick over multiple turns.
+- **Stalemate banner was too vague** (`4268927`). Now distinguishes
+  "No piece could move or fire" vs "No combat for 5 consecutive
+  turns" so the player knows whether it's ammo exhaustion or genuine
+  gridlock.
+
+### Design rules pinned this session
+- **Mouse-only UI — ZERO keyboard commands.** No Shift / Ctrl / Alt
+  modifiers, no hotkeys. Memory: [[feedback-no-keyboard-commands]].
+  Pinned into the top of `CLAUDE.md`. First triggered the compass-
+  rose rebind from shift+click → right-click (commit `1f0f290`).
+- **Finish tasks end-to-end.** Don't keep checking in mid-build for
+  trivial forks. Memory: [[feedback-finish-tasks-dont-stop]]. Reserve
+  AskUserQuestion for genuine forks (e.g. the no-keyboard rebind was
+  the right ask; "which carryover next?" was not). Default to picking
+  the recommended option and shipping.
+
+### New / changed files
+- `src/entities/FireArcPreview.ts` — new utility class. Wedge or
+  circle range overlay, faint blue, depth-test disabled so it
+  always shows. Used by BuildPhase (placement) + Game (sphere
+  placement + tower-edit preview).
+- `src/game/TurnTypes.ts` — `QueuedActionKind` adds `'slam'`,
+  `AP_COST.slam = 2`. New `slam` action carries a `cell: CellRef`
+  (the centre of the wedge, one cardinal step forward of the Hulk).
+- `src/entities/Structure.ts` — `addFacing(angle: number): boolean`
+  mutator. Normalizes to [0, 2π) and rejects duplicates. Caller is
+  responsible for charging credits.
+- `src/entities/SpriteUnit.ts` — `SPRITE_SIZE_OVERRIDE` table
+  (hulk → 84). `slamAmmoRemaining` field on every SpriteUnit
+  (sniper-style: Config-driven, 0 for non-Hulks). New `playSlamAnim()`
+  routes to the `throw` clip for Hulk.
+- `src/entities/PixelPowerCore.ts` / `SphereDefender.ts` — unchanged.
+- `src/game/Game.ts` — owns `editingStructure: Structure | null`,
+  `placementArcPreview: FireArcPreview`, `revealTurn: number` (for
+  the combat-log header). `tryBuyFacing`, `openCompassRose`,
+  `closeCompassRose`, `refundEditingStructure`, `findStructureNear`,
+  `worldToScreen` (inverse of screenToWorld). Right-click in BUILD
+  toggles the rose. tryRefund clears shop selection.
+- `src/game/BuildPhase.ts` — `firePreview: FireArcPreview` shown
+  alongside the structure cell ghost.
+- `src/game/RevealPhase.ts` — `combatLog: CombatLogEntry[]` +
+  `actorLabel` / `targetLabel` helpers. New `executeSlam` (wedge
+  geometry + side-aware hit). `applyAoeForSide` returns
+  `{ hits, damageDealt, kills }` so log entries can format the
+  summary. Diffuse / detonate / mine all emit log lines.
+- `src/game/GameConfig.ts` — `EXTRA_FACING_COST: 30`. Hulk gets
+  `slamDamage: 40, slamAmmo: 3`. Sniper added (cost 90, hp 80,
+  speed 50, dmg 150, range 400, ammo 1).
+- `src/ui/HUD.ts` — `#combat-log` panel (DOM); `#compass-rose` popup
+  (DOM, projected screen coords). New callbacks: `onAddFacing`,
+  `onRefundStructure`, `onRoseClose`. `appendCombatLog(turn, entries)`,
+  `showCompassRose(...)`, `refreshCompassRose(...)`, `hideCompassRose()`.
+  `showStalemate(reason?)` accepts an explanation.
+- `index.html` — CSS for `#combat-log` + `#compass-rose` + close /
+  refund buttons.
+- `public/sprites/sniper/` — full asset bundle.
+- `_zips/Cyborg_Sniper.zip` — source.
+
+### Repo state at session end
+- Branch `main` at `4268927`, pushed to GitHub, deployed to prod.
+- Build clean (`pnpm build`). Bundle: ~85 KB index + 526 KB Three.js.
+- Live: https://astrohold3.vercel.app
+- Project settings: created `.claude/settings.json` with 6 read-only
+  patterns (awk, shasum, Vercel MCP reads) — most permissions live
+  in the pre-existing `.claude/settings.local.json` (125 entries).
+- Pending tasks for the next session:
+  - **#5** Asset commissions (Gun + Defense dome — user picks winners)
+  - **#7** More cyborg / robot variety — Sniper landed; Assassin
+    (2-cell move, sneaky) + Berserker (frenzy <30% HP) still open
+  - **Hulk balance pass** — now possible after playtest with slam +
+    combat log live
+  - **Bomb planned-cell affordance** during PLAN (show where AI
+    queued throws land — small UX win)
+  - **Tower fire-arc UI: rotation** — currently arcs only ADD east
+    is locked as the base facing. Letting the player rotate the
+    initial facing would be the natural next pass.
+
+### Lessons / patterns to remember
+- **Callbacks fired during internal cleanup will clobber state set
+  just before.** The `openCompassRose` ordering bug was a textbook
+  example: setting state, then calling a method whose internal
+  cleanup runs the same callback that resets that state. Gate
+  cleanup-only paths so callbacks fire only on user-initiated
+  closes. Or set state AFTER calling the method.
+- **DOM-level outside-click listeners > delegated event gating.**
+  `closest('#hud')` to detect "click outside" silently broke when
+  the rose's outside happened to be ANOTHER HUD element. A
+  capture-phase document listener that checks `compassRoseEl.contains(target)`
+  is robust against any DOM layout.
+- **`mousedown` + `click` are two separate gestures.** If you fix
+  refund on `mousedown` but `click` still hits another handler,
+  your fix appears to do nothing. Track which event each handler
+  binds to, especially across files (Game uses mousedown,
+  BuildPhase uses click — they fire on the same gesture).
+- **Asset clips can lie about what they are.** The Meshy
+  `standing_still` clip was actually a kneel-with-rifle scoping
+  pose, not a relaxed idle. Always look at the rendered frames
+  before mapping an Meshy export to an `AnimState`; the clip name
+  is a hint, not a contract.
+- **Per-game ammo + cardinal-only + structure walls can deadlock.**
+  When everyone's spent and cyborgs are wall-blocked, default
+  actions must fall through to SOMETHING (core-advance, wander)
+  or the game ends in a confusing stalemate. Stalemate is fine —
+  silent stalemate isn't.
+
+### Suggested next-session opening moves
+1. **Bomb planned-cell indicator (PLAN phase)** — small affordance,
+   high information value. Hover-show / persistent marker for the
+   cell the AI will throw a bomb into when default actions run.
+2. **Tower rotation in compass rose** — currently the first facing
+   is hardcoded east. Add a "rotate base facing" gesture (e.g. the
+   center "X/4" tile becomes clickable and cycles N→E→S→W). Then
+   the rose is a complete tower-customization tool.
+3. **Hulk balance pass** — combat log now shows slam damage; pick
+   a target round, watch Hulk hit rate, tune damage 40→? or HP
+   280→? based on observed dominance.
+4. **More cyborg variety** — Assassin (cost 60, hp 60, speed 110,
+   2-cell move per turn — diagonal-capable special) + Berserker
+   (cost 80, hp 200, dmg 25 normal / dmg 50 + speed 120 when HP
+   under 30% — frenzy state). Need new PixelLab asset zips.
+5. **Sniper visual followup** — if static rotations also feel too
+   aggressive after playtest, re-render with a "rifle slung over
+   shoulder" pose for the rest stance, OR add a 1-frame `idle`
+   that sources from walking[0] (the standing-step frame which is
+   more neutral than the current rotations).
+6. **Combat log filtering / persistence options** — pin recent
+   kills to top, or add a "show only N turns" toggle for long
+   matches.

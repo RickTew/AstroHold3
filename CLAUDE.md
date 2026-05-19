@@ -1,6 +1,6 @@
 # AstroHold — Project Rules for Claude
 
-## Status: D&D-style strategy engine LIVE (session 11)
+## Status: D&D-style strategy engine LIVE (session 12)
 Chess-like turn-based grid strategy with cinematic plan-then-watch reveal.
 Both sides queue all actions during PLAN; clicking BATTLE animates them one
 piece-action at a time sorted by Initiative DESC. After the first BATTLE
@@ -15,6 +15,14 @@ watches. **NOT an RTS.** Mechanics are tuned for D&D-style strategy:
 - **Mouse-only UI — ZERO keyboard commands.** No Shift/Ctrl/Alt
   modifiers, no hotkeys. Every action must be reachable with the
   cursor alone (right-click, double-click, hover, HUD buttons).
+- **Combat history log** streams every reveal action to a right-rail
+  panel during BATTLE (D&D-style turn log; side-coloured rows).
+- **Compass-rose UI** — right-click a placed firing structure during
+  BUILD to buy extra fire-arc directions (30cr per added cardinal).
+- **Fire-arc preview** appears under the placement ghost so the player
+  can see what a tower will and won't cover before committing.
+- **Hulk slam special action** (2 AP, 3-cell wedge in facing dir).
+- **Cyborg Sniper** — single-shot, 400-range, 150 dmg precision strike.
 
 **One piece per cell, strict.** Large pieces (Power Core today) use a 2x2
 footprint per the size rule. Long-term plan and current balance numbers live
