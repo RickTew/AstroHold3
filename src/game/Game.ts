@@ -270,6 +270,15 @@ private enterBuildPhase() {
     // the currently-edited structure. Credits are charged here, the rose UI
     // re-renders to reflect the new facing, and the arc overlay updates.
     this.hud.onAddFacing = (angle) => this.tryBuyFacing(angle)
+    // Rose Refund button: tear down the editing structure and reimburse its
+    // base cost (extra-facing spend is sunk by design).
+    this.hud.onRefundStructure = () => this.refundEditingStructure()
+    // Rose closed by any means (X button, document-level outside click,
+    // explicit Game-side close). Clear the editing structure + arc preview.
+    this.hud.onRoseClose = () => {
+      this.editingStructure = null
+      this.placementArcPreview.hide()
+    }
   }
 
   // Compass-rose purchase. Returns true on success. Silently rejects if the
@@ -312,10 +321,22 @@ private enterBuildPhase() {
   }
 
   private closeCompassRose() {
-    if (!this.editingStructure) return
-    this.editingStructure = null
+    if (!this.editingStructure && !this.hud.isCompassRoseOpen()) return
     this.hud.hideCompassRose()
-    this.placementArcPreview.hide()
+    // hideCompassRose fires onRoseClose which clears editingStructure + the
+    // arc preview, so no further cleanup needed here.
+  }
+
+  // Refund the currently-edited structure. Returns base cost only — extra-
+  // facing spend is sunk per design. Closes the rose afterward.
+  private refundEditingStructure() {
+    const s = this.editingStructure
+    if (!s || !this.buildPhase) return
+    const structs = this.buildPhase.getStructures()
+    const idx = structs.indexOf(s)
+    if (idx >= 0) structs.splice(idx, 1)
+    s.dispose()
+    this.buildPhase.addCredits(Config.STRUCTURES[s.type].cost)
   }
 
   // Show the live arc-preview overlay for whatever structure the compass rose
@@ -694,15 +715,22 @@ private enterBuildPhase() {
       return
     }
     // Right-click in BUILD over an existing firing structure → open the
-    // compass rose. Over empty space → pan the camera. This narrows the
-    // older blanket pan-on-right-click so a single mouse-only gesture can
-    // bring up the extra-facings purchase UI. No keyboard modifiers needed.
+    // compass rose (or close it if it's already showing that structure —
+    // right-click acts as a toggle). Over empty space → pan the camera.
+    // Mouse-only gesture, no keyboard modifiers.
     if (e.button === 2 && this.phase === 'build') {
       if (!(e.target as HTMLElement).closest('#hud')) {
         const world = this.screenToWorld(e.clientX, e.clientY)
         if (world) {
           const s = this.findStructureNear(world.x, world.y)
-          if (s) { this.openCompassRose(s); return }
+          if (s) {
+            if (s === this.editingStructure) {
+              this.closeCompassRose()
+            } else {
+              this.openCompassRose(s)
+            }
+            return
+          }
         }
       }
       this.isPanning = true
@@ -717,16 +745,12 @@ private enterBuildPhase() {
     if (e.button === 0 && this.phase === 'build') {
       if ((e.target as HTMLElement).closest('#hud')) return  // ignore HUD clicks
 
-      // If the compass rose is open, any click outside it closes the rose and
-      // consumes the click — don't refund or place on a "click away" gesture.
-      if (this.hud.isCompassRoseOpen()) {
-        this.closeCompassRose()
-        return
-      }
-
+      // (Rose closing on outside-click is handled by HUD's own document-level
+      // listener — it doesn't consume the click, so refund/place below still
+      // run on the same click target as the user expects.)
       const world = this.screenToWorld(e.clientX, e.clientY)
 
-      // Refund-and-remove if clicking on an already-placed sphere or cyborg.
+      // Refund-and-remove if clicking on a placed sphere, cyborg, or structure.
       if (world && this.tryRefund(world.x, world.y)) return
 
       if (this.placement) {

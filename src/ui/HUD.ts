@@ -21,15 +21,26 @@ export class HUD {
   // appear here…)" placeholder on first append.
   private combatLogEmpty = true
   private compassRoseEl: HTMLElement | null = null
+  // Document-level mousedown listener installed when the rose opens. Closes
+  // the rose on any click outside the rose DOM — works regardless of whether
+  // the click lands on the canvas or another HUD element.
+  private compassRoseOutsideListener: ((e: MouseEvent) => void) | null = null
 
   onSelectStructure: ((type: StructureType) => void) | null = null
   onSpawnUnit: ((type: UnitType) => void) | null = null
   onBuySphere: (() => void) | null = null
   onBuyDog: (() => void) | null = null
   onBattle: (() => void) | null = null
-  // Compass-rose callback. Game decides whether the purchase succeeds (cost,
+  // Compass-rose callbacks. Game decides whether the purchase succeeds (cost,
   // credits, duplicate facing); HUD just forwards the click intent.
   onAddFacing: ((angle: number) => void) | null = null
+  // Player clicked Refund on an opened rose. Game removes the structure and
+  // returns the base cost. HUD will auto-close the rose after the callback.
+  onRefundStructure: (() => void) | null = null
+  // Rose closed (via the X button, document-level outside-click listener, or
+  // hideCompassRose called by Game). Game uses this to clear editingStructure
+  // and hide the arc-preview overlay.
+  onRoseClose: (() => void) | null = null
 
   constructor() {
     this.container = document.getElementById('hud')!
@@ -269,7 +280,36 @@ export class HUD {
     el.style.left = `${screenX}px`
     el.style.top  = `${screenY}px`
     el.innerHTML = this.buildRoseInnerHtml(opts)
-    el.addEventListener('mousedown', e => e.stopPropagation())   // don't trigger outside-close on rose clicks
+    this.wireRoseButtons(el)
+    this.container.appendChild(el)
+    this.compassRoseEl = el
+
+    // Document-level mousedown: close the rose on ANY click outside its DOM.
+    // Captures the event before Game's window-level handler so it can decide
+    // whether to bubble (no stopPropagation here — Game's refund/place still
+    // runs on the same click, which is exactly what the user expects: one
+    // click closes the rose AND acts at the click target).
+    this.compassRoseOutsideListener = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null
+      if (target && this.compassRoseEl?.contains(target)) return
+      this.hideCompassRose()
+    }
+    document.addEventListener('mousedown', this.compassRoseOutsideListener, true)
+  }
+
+  hideCompassRose() {
+    if (this.compassRoseEl) {
+      this.compassRoseEl.remove()
+      this.compassRoseEl = null
+    }
+    if (this.compassRoseOutsideListener) {
+      document.removeEventListener('mousedown', this.compassRoseOutsideListener, true)
+      this.compassRoseOutsideListener = null
+    }
+    this.onRoseClose?.()
+  }
+
+  private wireRoseButtons(el: HTMLElement) {
     el.querySelectorAll<HTMLElement>('.rose-btn[data-angle]').forEach(btn => {
       btn.addEventListener('click', () => {
         if (btn.classList.contains('active')) return
@@ -278,15 +318,13 @@ export class HUD {
         this.onAddFacing?.(angle)
       })
     })
-    this.container.appendChild(el)
-    this.compassRoseEl = el
-  }
-
-  hideCompassRose() {
-    if (this.compassRoseEl) {
-      this.compassRoseEl.remove()
-      this.compassRoseEl = null
-    }
+    el.querySelector<HTMLElement>('.rose-close-btn')?.addEventListener('click', () => {
+      this.hideCompassRose()
+    })
+    el.querySelector<HTMLElement>('.rose-refund-btn')?.addEventListener('click', () => {
+      this.onRefundStructure?.()
+      this.hideCompassRose()
+    })
   }
 
   isCompassRoseOpen(): boolean { return this.compassRoseEl !== null }
@@ -302,14 +340,7 @@ export class HUD {
   }) {
     if (!this.compassRoseEl) return
     this.compassRoseEl.innerHTML = this.buildRoseInnerHtml(opts)
-    this.compassRoseEl.querySelectorAll<HTMLElement>('.rose-btn[data-angle]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        if (btn.classList.contains('active')) return
-        if (btn.classList.contains('unaffordable')) return
-        const angle = parseFloat(btn.dataset.angle!)
-        this.onAddFacing?.(angle)
-      })
-    })
+    this.wireRoseButtons(this.compassRoseEl)
   }
 
   private buildRoseInnerHtml(opts: {
@@ -352,7 +383,16 @@ export class HUD {
         cells.push(`<div class="rose-btn" data-angle="${d.angle}"><span class="rose-arrow">${d.arrow}</span><span class="rose-cost">+${opts.cost}cr</span></div>`)
       }
     }
-    return `<div class="rose-title">${opts.name} arcs</div>` + cells.join('')
+    return `
+      <div class="rose-title">
+        <span>${opts.name} arcs</span>
+        <button class="rose-close-btn" type="button" aria-label="Close">✕</button>
+      </div>
+      ${cells.join('')}
+      <div class="rose-footer">
+        <button class="rose-refund-btn" type="button">Refund</button>
+      </div>
+    `
   }
 
   // Append one reveal's worth of combat-log entries under a "── Turn N ──"

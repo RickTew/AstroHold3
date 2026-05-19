@@ -266,10 +266,52 @@
     }
     #compass-rose .rose-title {
       grid-column: 1 / 4;
-      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
       color: #88ccff;
       letter-spacing: 1px;
       margin-bottom: 2px;
+    }
+    #compass-rose .rose-title span { flex: 1; text-align: center; }
+    #compass-rose .rose-close-btn {
+      width: 20px; height: 20px;
+      padding: 0;
+      background: transparent;
+      border: 1px solid #335577;
+      color: #99bbcc;
+      font-family: inherit;
+      font-size: 11px;
+      line-height: 1;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    #compass-rose .rose-close-btn:hover {
+      background: #2a0010;
+      border-color: #aa2244;
+      color: #ffbbbb;
+    }
+    #compass-rose .rose-footer {
+      grid-column: 1 / 4;
+      margin-top: 4px;
+      display: flex; justify-content: center;
+    }
+    #compass-rose .rose-refund-btn {
+      flex: 1;
+      padding: 6px 8px;
+      background: #2a0008;
+      border: 1px solid #661122;
+      color: #ddaaaa;
+      font-family: inherit;
+      font-size: 11px;
+      letter-spacing: 1px;
+      cursor: pointer;
+    }
+    #compass-rose .rose-refund-btn:hover {
+      background: #440010;
+      border-color: #aa2244;
+      color: #ffbbbb;
     }
     #compass-rose .rose-btn {
       display: flex;
