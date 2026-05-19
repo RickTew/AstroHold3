@@ -249,10 +249,12 @@ purchases for directional structures.
 
 ### Live: Extra fire arcs (compass-rose UI)
 Every directional structure ships with one east-facing 120° wedge.
-Shift+click the placed structure during BUILD to open a compass rose;
+Right-click the placed structure during BUILD to open a compass rose;
 pay `Config.EXTRA_FACING_COST` (30cr) per additional cardinal facing
-(max 4 = omnidirectional coverage). Refunding a structure refunds only
-its base cost — extra-facing spend is sunk.
+(max 4 = omnidirectional coverage). Right-click on empty space still
+pans the camera. Left-click anywhere outside the rose closes it.
+Refunding a structure refunds only its base cost — extra-facing spend
+is sunk.
 
 Planned shop additions (apply per-piece):
 | Upgrade | Effect | Suggested cost |

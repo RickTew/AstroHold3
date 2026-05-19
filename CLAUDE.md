@@ -12,6 +12,9 @@ watches. **NOT an RTS.** Mechanics are tuned for D&D-style strategy:
 - **Reactive AI** — units flee armed bomb AoEs, prefer shooting bombs from
   outside the radius, grenadiers diffuse adjacent enemy bombs.
 - **Bomb counterplay always exists** — flee, shoot, or diffuse.
+- **Mouse-only UI — ZERO keyboard commands.** No Shift/Ctrl/Alt
+  modifiers, no hotkeys. Every action must be reachable with the
+  cursor alone (right-click, double-click, hover, HUD buttons).
 
 **One piece per cell, strict.** Large pieces (Power Core today) use a 2x2
 footprint per the size rule. Long-term plan and current balance numbers live

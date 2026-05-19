@@ -692,6 +692,22 @@ private enterBuildPhase() {
       this.planningPhase?.onSecondaryClick()
       return
     }
+    // Right-click in BUILD over an existing firing structure → open the
+    // compass rose. Over empty space → pan the camera. This narrows the
+    // older blanket pan-on-right-click so a single mouse-only gesture can
+    // bring up the extra-facings purchase UI. No keyboard modifiers needed.
+    if (e.button === 2 && this.phase === 'build') {
+      if (!(e.target as HTMLElement).closest('#hud')) {
+        const world = this.screenToWorld(e.clientX, e.clientY)
+        if (world) {
+          const s = this.findStructureNear(world.x, world.y)
+          if (s) { this.openCompassRose(s); return }
+        }
+      }
+      this.isPanning = true
+      this.lastPan = { x: e.clientX, y: e.clientY }
+      return
+    }
     if (e.button === 2) {
       this.isPanning = true
       this.lastPan = { x: e.clientX, y: e.clientY }
@@ -708,17 +724,6 @@ private enterBuildPhase() {
       }
 
       const world = this.screenToWorld(e.clientX, e.clientY)
-
-      // Shift+click on an existing firing structure → open the compass rose
-      // (extra fire-arc purchase). Falls through to normal place/refund if
-      // the click doesn't land on a structure.
-      if (e.shiftKey && world) {
-        const s = this.findStructureNear(world.x, world.y)
-        if (s) {
-          this.openCompassRose(s)
-          return
-        }
-      }
 
       // Refund-and-remove if clicking on an already-placed sphere or cyborg.
       if (world && this.tryRefund(world.x, world.y)) return
