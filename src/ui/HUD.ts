@@ -252,8 +252,12 @@ export class HUD {
   // either side can act (out of ammo, no targets in sight, no movement
   // options). Same Play Again affordance as win/lose so the player isn't
   // stuck staring at a frozen board.
-  showStalemate() {
-    this.showEndMessage('STALEMATE', 'No piece can act — start a new round?', '#ffcc44')
+  showStalemate(reason?: string) {
+    this.showEndMessage(
+      'STALEMATE',
+      reason ?? 'No piece can act — start a new round?',
+      '#ffcc44',
+    )
   }
 
   hideMessage() {
@@ -298,6 +302,11 @@ export class HUD {
   }
 
   hideCompassRose() {
+    // Only fire onRoseClose if there was actually an open rose to close —
+    // otherwise the internal-cleanup call at the top of showCompassRose
+    // would clobber Game's editingStructure RIGHT AFTER it was set, breaking
+    // the rose's button clicks.
+    const wasOpen = this.compassRoseEl !== null
     if (this.compassRoseEl) {
       this.compassRoseEl.remove()
       this.compassRoseEl = null
@@ -306,7 +315,7 @@ export class HUD {
       document.removeEventListener('mousedown', this.compassRoseOutsideListener, true)
       this.compassRoseOutsideListener = null
     }
-    this.onRoseClose?.()
+    if (wasOpen) this.onRoseClose?.()
   }
 
   private wireRoseButtons(el: HTMLElement) {

@@ -232,16 +232,24 @@ export class RevealPhase {
     if (moveTarget) {
       const cell = this.pickStepTowardPoint(unit, moveTarget.x, moveTarget.y)
       if (cell) return { kind: 'move', cell }
+      // Sighted but unreachable (blocked by walls, structures, or other
+      // cyborgs). Fall through to the side-specific fallback so the unit
+      // still picks a step — otherwise a wall-of-defenders + cyborg cluster
+      // freezes everyone and ends the round in a confusing stalemate.
     }
-    // Nothing in sight. Fallback behaviour by side.
+    // Side-specific fallback for "can't make progress to a sighted enemy".
     if (unit.side === 'attacker' && !this.core.isDead) {
-      // Cyborgs always grind toward the core.
+      // Cyborgs grind toward the core — different target than the sighted
+      // enemy, so a step that was blocked west might still be free south.
       const cc = this.core.cellCenters()[0]
       const cell = this.pickStepTowardPoint(unit, cc.x, cc.y)
       if (cell) return { kind: 'move', cell }
+      // Final cyborg fallback: shuffle sideways so the formation can
+      // unstick over multiple turns instead of all units permanently jammed.
+      const wander = this.pickWanderStep(unit)
+      if (wander) return { kind: 'move', cell: wander }
     }
     if (unit.side === 'defender') {
-      // Robots wander when no enemy in sight (per user spec).
       const cell = this.pickWanderStep(unit)
       if (cell) return { kind: 'move', cell }
     }

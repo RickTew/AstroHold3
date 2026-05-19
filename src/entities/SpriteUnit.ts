@@ -17,6 +17,14 @@ export type AnimState = 'idle' | 'walking' | 'shoot' | 'throw' | 'die'
 
 // Sprite world size — matches the perceived height of the prior 3D cyborg.
 const SPRITE_SIZE = 60
+// Per-type size overrides. Hulk is a bruiser — visually larger than a
+// rank-and-file cyborg so his presence on the field is unmistakable.
+const SPRITE_SIZE_OVERRIDE: Partial<Record<UnitType, number>> = {
+  hulk: 84,
+}
+function spriteSizeFor(type: UnitType): number {
+  return SPRITE_SIZE_OVERRIDE[type] ?? SPRITE_SIZE
+}
 
 // Per-cyborg-type colour tint. Grenadier gets a green wash so it doesn't
 // read as the same dark-armoured cyborg as Cannon. Doublegun gets warm
@@ -125,15 +133,16 @@ const MANIFEST: Record<string, AnimManifest> = {
     die:     { fps: 12, loop: false, presentDirs: ALL_DIRS, frameCount: 4 },
   },
   // Cyborg Sniper — precision-strike unit. Asset coverage:
-  //  - idle: south + south-east + south-west only (the "ready to scope" pose).
-  //    Other dirs fall back to static rotations.
+  //  - No idle clip — the PixelLab "standing_still" export is actually a
+  //    kneel-with-rifle-grounded pose that read as "still aiming" to the
+  //    player, so we let refreshDirection fall back to the upright static
+  //    rotation PNGs when the sniper is at rest after their one shot.
   //  - walking: 4 cardinal dirs; diagonals mirror off N/S.
   //  - shoot (sniper-rifle pose): 7 directions — E/W use the crouches clip,
   //    N/NE/NW use the back-aiming clip, SE/SW use the holding clip. South
   //    is the only gap; mirror logic + static south.png covers it.
   //  - die: full 8 directions, 9-frame ragdoll.
   sniper: {
-    idle:    { fps: 5,  loop: true,  presentDirs: ['south', 'south-east', 'south-west'], frameCount: 9 },
     walking: { fps: 8,  loop: true,  presentDirs: ['east', 'west', 'north', 'south'], frameCount: 9 },
     shoot:   { fps: 12, loop: false, presentDirs: ['east', 'west', 'north', 'north-east', 'north-west', 'south-east', 'south-west'], frameCount: 9 },
     die:     { fps: 10, loop: false, presentDirs: ALL_DIRS, frameCount: 9 },
@@ -306,7 +315,7 @@ export class SpriteUnit {
       alphaTest: 0.1,
     })
     this.sprite = new THREE.Sprite(mat)
-    this.sprite.scale.set(SPRITE_SIZE, SPRITE_SIZE, 1)
+    this.sprite.scale.set(spriteSizeFor(this.type), spriteSizeFor(this.type), 1)
     // Centered on mesh.position — top-down grid: piece sits in its cell, not
     // anchored at the feet.
     this.sprite.position.set(0, 0, 5)
@@ -538,7 +547,7 @@ export class SpriteUnit {
       this.sprite.material.map = tex
       this.sprite.material.needsUpdate = true
       this.currentFrames = []
-      this.sprite.scale.set(SPRITE_SIZE, SPRITE_SIZE, 1)
+      this.sprite.scale.set(spriteSizeFor(this.type), spriteSizeFor(this.type), 1)
       return
     }
 
@@ -548,7 +557,8 @@ export class SpriteUnit {
     if (this.frameIndex >= frames.length) this.frameIndex = frames.length - 1
     this.sprite.material.map = frames[this.frameIndex]
     this.sprite.material.needsUpdate = true
-    this.sprite.scale.set(mirrored ? -SPRITE_SIZE : SPRITE_SIZE, SPRITE_SIZE, 1)
+    const size = spriteSizeFor(this.type)
+    this.sprite.scale.set(mirrored ? -size : size, size, 1)
   }
 
   private advanceFrame(delta: number) {

@@ -315,14 +315,17 @@ private enterBuildPhase() {
     this.endPlacement()
     this.buildPhase?.selectStructure(null)
     this.hud.clearStructureSelection()
-    this.editingStructure = s
     const screen = this.worldToScreen(s.worldX, s.worldY)
+    // showCompassRose internally hides any previous rose; that hide fires
+    // onRoseClose which would zero out editingStructure. So set the field
+    // AFTER showCompassRose finishes.
     this.hud.showCompassRose(screen.x, screen.y, {
       name: this.structureDisplayLabel(s),
       activeFacings: s.fireFacings,
       cost: Config.EXTRA_FACING_COST,
       credits: this.buildPhase?.getCredits() ?? 0,
     })
+    this.editingStructure = s
     this.refreshEditingArcPreview()
   }
 
@@ -433,9 +436,12 @@ private enterBuildPhase() {
       const NO_PROGRESS_LIMIT = 5
       if (!hadActions || this.noProgressReveals >= NO_PROGRESS_LIMIT) {
         // Stalemate: either no piece could act this turn, or no combat has
-        // happened for several reveals in a row (everyone out of ammo /
-        // can't reach a target). Halt the auto-loop and show Play Again.
-        this.hud.showStalemate()
+        // happened for several reveals in a row. Tell the player which case
+        // we hit so they can see whether it's ammo exhaustion vs gridlock.
+        const reason = !hadActions
+          ? 'No piece could move or fire this turn — every cyborg is blocked or out of ammo, and every defender is out of range or out of ammo.'
+          : `No combat for ${NO_PROGRESS_LIMIT} consecutive turns — pieces are wandering with nothing to hit.`
+        this.hud.showStalemate(reason)
         return
       }
       // Clear queued plans so the next auto-reveal uses default actions
